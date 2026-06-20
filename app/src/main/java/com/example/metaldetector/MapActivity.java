@@ -3,17 +3,15 @@ package com.example.metaldetector;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -25,29 +23,34 @@ import android.widget.TextView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import org.osmdroid.api.IMapController;
-import org.osmdroid.config.Configuration;
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory;
+import com.yandex.mapkit.MapKitFactory;
+import com.yandex.mapkit.geometry.Point;
+import com.yandex.mapkit.geometry.Polyline;
+import com.yandex.mapkit.map.CameraPosition;
+import com.yandex.mapkit.map.ImageProvider;
+import com.yandex.mapkit.map.MapObjectCollection;
+import com.yandex.mapkit.map.MapObjectTapListener;
+import com.yandex.mapkit.map.PlacemarkMapObject;
+import com.yandex.mapkit.map.PolylineMapObject;
+import com.yandex.mapkit.mapview.MapView;
+import com.yandex.mapkit.user_location.UserLocationLayer;
+
 import org.osmdroid.util.GeoPoint;
-import org.osmdroid.views.MapView;
-import org.osmdroid.views.overlay.Marker;
-import org.osmdroid.views.overlay.Polyline;
-import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class MapActivity extends Activity {
     private static final int REQUEST_LOCATION = 77;
-    private static final String PREFS = "detector_settings";
 
     private MapView mapView;
-    private IMapController mapController;
-    private MyLocationNewOverlay myLocationOverlay;
-    private Polyline trackPolyline;
+    private MapObjectCollection mapObjectCollection;
+    private UserLocationLayer userLocationLayer;
+    private PolylineMapObject trackPolyline;
     private Handler trackHandler;
     private Runnable trackRunnable;
     private NotesDatabase notesDb;
+    private LocationManager locationManager;
 
     private TextView statusText;
     private Button recordButton;
@@ -56,20 +59,28 @@ public class MapActivity extends Activity {
     private Button refreshButton;
     private Button backButton;
 
-    private volatile GeoPoint lastKnownLocation = null;
+    private volatile Point lastKnownLocation = null;
+
+    private final MapObjectTapListener markerTapListener = (mapObject, point) -> {
+        if (mapObject instanceof PlacemarkMapObject) {
+            Object userData = ((PlacemarkMapObject) mapObject).getUserData();
+            if (userData instanceof Note) {
+                showNoteDetails((Note) userData);
+                return true;
+            }
+        }
+        return false;
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Configuration.getInstance().load(this, getSharedPreferences(PREFS, MODE_PRIVATE));
         notesDb = new NotesDatabase(this);
 
         setContentView(createLayout());
 
-        mapController = mapView.getController();
-        mapController.setZoom(15.0);
-
-        setupLocationOverlay();
+        mapObjectCollection = mapView.getMap().getMapObjects();
+        setupUserLocation();
         setupTrackPolyline();
         loadNotesMarkers();
         startTrackUpdater();
@@ -116,12 +127,10 @@ public class MapActivity extends Activity {
 
         root.addView(topBar, new LinearLayout.LayoutParams(-1, -2));
 
-        // Map view
+        // Map view (Yandex MapKit)
         mapView = new MapView(this);
-        mapView.setTileSource(TileSourceFactory.MAPNIK);
-        mapView.setMultiTouchControls(true);
+        mapView.setFocusable(true);
         mapView.setClickable(true);
-        mapView.setBuiltInZoomControls(true);
         root.addView(mapView, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         // Bottom controls
@@ -150,12 +159,6 @@ public class MapActivity extends Activity {
         addNoteButton.setOnClickListener(v -> showAddNoteDialog());
         controls.addView(addNoteButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        Button yandexButton = new Button(this);
-        yandexButton.setText("🗺 Яндекс");
-        yandexButton.setAllCaps(false);
-        yandexButton.setOnClickListener(v -> openYandexMap());
-        controls.addView(yandexButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
-
         refreshButton = new Button(this);
         refreshButton.setText("🔄 Обновить");
         refreshButton.setAllCaps(false);
@@ -167,18 +170,30 @@ public class MapActivity extends Activity {
         return root;
     }
 
-    private void setupLocationOverlay() {
-        myLocationOverlay = new MyLocationNewOverlay(mapView);
-        myLocationOverlay.enableMyLocation();
-        myLocationOverlay.enableFollowLocation();
-        mapView.getOverlays().add(myLocationOverlay);
+    private void setupUserLocation() {
+        userLocationLayer = MapKitFactory.getInstance().createUserLocationLayer(mapView.getMapWindow());
+        userLocationLayer.setVisible(true);
+        userLocationLayer.setHeadingEnabled(true);
+
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        try {
+            Location lastLoc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (lastLoc != null) {
+                lastKnownLocation = new Point(lastLoc.getLatitude(), lastLoc.getLongitude());
+                mapView.getMap().move(new CameraPosition(lastKnownLocation, 15.0f, 0.0f, 0.0f));
+            } else {
+                mapView.getMap().move(new CameraPosition(new Point(55.753994, 37.622093), 15.0f, 0.0f, 0.0f));
+            }
+        } catch (SecurityException e) {
+            mapView.getMap().move(new CameraPosition(new Point(55.753994, 37.622093), 15.0f, 0.0f, 0.0f));
+        }
     }
 
     private void setupTrackPolyline() {
-        trackPolyline = new Polyline();
-        trackPolyline.setColor(Color.rgb(15, 118, 110));
-        trackPolyline.setWidth(6f);
-        mapView.getOverlays().add(trackPolyline);
+        List<Point> emptyPoints = new ArrayList<>();
+        trackPolyline = mapObjectCollection.addPolyline(new Polyline(emptyPoints));
+        trackPolyline.setStrokeColor(Color.rgb(15, 118, 110));
+        trackPolyline.setStrokeWidth(6f);
     }
 
     private void startTrackUpdater() {
@@ -187,7 +202,11 @@ public class MapActivity extends Activity {
             @Override
             public void run() {
                 if (TrackRecorder.isRunning && !TrackRecorder.trackPoints.isEmpty()) {
-                    trackPolyline.setPoints(new ArrayList<>(TrackRecorder.trackPoints));
+                    List<Point> points = new ArrayList<>();
+                    for (GeoPoint gp : TrackRecorder.trackPoints) {
+                        points.add(new Point(gp.getLatitude(), gp.getLongitude()));
+                    }
+                    trackPolyline.setGeometry(new Polyline(points));
                     statusText.setText("Трек: " + TrackRecorder.trackPoints.size() + " точек");
                 } else if (TrackRecorder.isRunning) {
                     statusText.setText("Ожидание GPS...");
@@ -195,12 +214,16 @@ public class MapActivity extends Activity {
                     statusText.setText("Карта");
                 }
 
-                // Update last known location from overlay
-                if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
-                    lastKnownLocation = myLocationOverlay.getMyLocation();
-                }
+                // Update last known location from LocationManager
+                try {
+                    if (locationManager != null) {
+                        Location lastLoc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                        if (lastLoc != null) {
+                            lastKnownLocation = new Point(lastLoc.getLatitude(), lastLoc.getLongitude());
+                        }
+                    }
+                } catch (SecurityException ignored) {}
 
-                mapView.invalidate();
                 trackHandler.postDelayed(this, 1000);
             }
         };
@@ -232,16 +255,14 @@ public class MapActivity extends Activity {
     }
 
     private void showAddNoteDialog() {
-        GeoPoint point = null;
-        if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
-            point = myLocationOverlay.getMyLocation();
-        } else if (lastKnownLocation != null) {
+        Point point = null;
+        if (lastKnownLocation != null) {
             point = lastKnownLocation;
         } else {
-            point = (GeoPoint) mapView.getMapCenter();
+            point = mapView.getMap().getCameraPosition().getTarget();
         }
 
-        final GeoPoint notePoint = point;
+        final Point notePoint = point;
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
@@ -264,7 +285,7 @@ public class MapActivity extends Activity {
         descInput.setMinLines(3);
         layout.addView(descInput);
 
-        final GeoPoint finalPoint = notePoint;
+        final Point finalPoint = notePoint;
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Добавить заметку")
                 .setView(scroll)
@@ -276,54 +297,34 @@ public class MapActivity extends Activity {
                     Note note = new Note(title, desc, finalPoint.getLatitude(), finalPoint.getLongitude(), System.currentTimeMillis());
                     notesDb.addNote(note);
                     addMarker(note);
-                    mapView.invalidate();
                 })
                 .setNegativeButton("Отмена", null)
                 .show();
     }
 
-    private void openYandexMap() {
-        GeoPoint point = null;
-        if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
-            point = myLocationOverlay.getMyLocation();
-        } else if (lastKnownLocation != null) {
-            point = lastKnownLocation;
-        } else {
-            point = (GeoPoint) mapView.getMapCenter();
-        }
-        YandexNavigator.openYandexMaps(this, point.getLatitude(), point.getLongitude(), 16);
-    }
-
     private void loadNotesMarkers() {
-        // Remove old note markers (keep location overlay and track polyline)
-        List<org.osmdroid.views.overlay.Overlay> toKeep = new ArrayList<>();
-        for (org.osmdroid.views.overlay.Overlay overlay : mapView.getOverlays()) {
-            if (overlay instanceof MyLocationNewOverlay || overlay instanceof Polyline) {
-                toKeep.add(overlay);
-            }
-        }
-        mapView.getOverlays().clear();
-        mapView.getOverlays().addAll(toKeep);
+        // Save current track geometry
+        Polyline currentTrack = trackPolyline.getGeometry();
+        mapObjectCollection.clear();
+
+        // Restore track polyline
+        trackPolyline = mapObjectCollection.addPolyline(currentTrack);
+        trackPolyline.setStrokeColor(Color.rgb(15, 118, 110));
+        trackPolyline.setStrokeWidth(6f);
 
         List<Note> notes = notesDb.getAllNotes();
         for (Note note : notes) {
             addMarker(note);
         }
-        mapView.invalidate();
     }
 
     private void addMarker(Note note) {
-        Marker marker = new Marker(mapView);
-        marker.setPosition(new GeoPoint(note.getLatitude(), note.getLongitude()));
-        marker.setTitle(note.getTitle());
-        marker.setSnippet(note.getDescription());
-        marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
-        marker.setIcon(getResources().getDrawable(android.R.drawable.ic_menu_mylocation, null));
-        marker.setOnMarkerClickListener((m, mv) -> {
-            showNoteDetails(note);
-            return true;
-        });
-        mapView.getOverlays().add(marker);
+        PlacemarkMapObject placemark = mapObjectCollection.addPlacemark(
+                new Point(note.getLatitude(), note.getLongitude()),
+                ImageProvider.fromResource(this, android.R.drawable.ic_menu_mylocation)
+        );
+        placemark.setUserData(note);
+        placemark.addTapListener(markerTapListener);
     }
 
     private void showNoteDetails(Note note) {
@@ -340,12 +341,7 @@ public class MapActivity extends Activity {
                 .setNeutralButton("Маршрут", (dialog, which) -> {
                     double latTo = note.getLatitude();
                     double lonTo = note.getLongitude();
-                    GeoPoint from = null;
-                    if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
-                        from = myLocationOverlay.getMyLocation();
-                    } else if (lastKnownLocation != null) {
-                        from = lastKnownLocation;
-                    }
+                    Point from = lastKnownLocation;
                     if (from != null) {
                         YandexNavigator.buildRoute(this, from.getLatitude(), from.getLongitude(), latTo, lonTo);
                     } else {
@@ -368,9 +364,7 @@ public class MapActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_LOCATION) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                if (myLocationOverlay != null) {
-                    myLocationOverlay.enableMyLocation();
-                }
+                setupUserLocation();
             } else {
                 statusText.setText("GPS разрешение отклонено");
             }
@@ -378,21 +372,17 @@ public class MapActivity extends Activity {
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        mapView.onResume();
-        if (myLocationOverlay != null) {
-            myLocationOverlay.enableMyLocation();
-        }
+    protected void onStart() {
+        super.onStart();
+        MapKitFactory.getInstance().onStart();
+        mapView.onStart();
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
-        mapView.onPause();
-        if (myLocationOverlay != null) {
-            myLocationOverlay.disableMyLocation();
-        }
+    protected void onStop() {
+        mapView.onStop();
+        MapKitFactory.getInstance().onStop();
+        super.onStop();
     }
 
     @Override

@@ -185,14 +185,6 @@ public class MainActivity extends Activity {
         });
         root.addView(mapButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
 
-        Button yandexMapButton = new Button(this);
-        yandexMapButton.setText("🗺 Яндекс Карты");
-        yandexMapButton.setAllCaps(false);
-        yandexMapButton.setOnClickListener(v -> {
-            YandexNavigator.openYandexMaps(this, 55.753994, 37.622093, 12);
-        });
-        root.addView(yandexMapButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
-
         amplitudeText = metric("-40 dB");
         root.addView(amplitudeText, matchWrap());
 
