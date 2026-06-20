@@ -6,7 +6,7 @@ import com.yandex.mapkit.MapKitFactory;
 public class DetectorApp extends Application {
     // ВСТАВЬТЕ СЮДА СВОЙ API-КЛЮЧ ОТ ЯНДЕКС.КАРТ (MapKit)
     // Получить бесплатно: https://developer.tech.yandex.ru/maps/
-    private static final String MAPKIT_API_KEY = "YOUR_YANDEX_MAPKIT_API_KEY";
+    private static final String MAPKIT_API_KEY = "513208dc-a372-40d5-84ca-7ef7d13a6c66";
 
     @Override
     public void onCreate() {
