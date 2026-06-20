@@ -27,7 +27,6 @@ import com.yandex.mapkit.MapKitFactory;
 import com.yandex.mapkit.geometry.Point;
 import com.yandex.mapkit.geometry.Polyline;
 import com.yandex.mapkit.map.CameraPosition;
-import com.yandex.mapkit.map.ImageProvider;
 import com.yandex.mapkit.map.MapObjectCollection;
 import com.yandex.mapkit.map.MapObjectTapListener;
 import com.yandex.mapkit.map.PlacemarkMapObject;
@@ -321,9 +320,9 @@ public class MapActivity extends Activity {
 
     private void addMarker(Note note) {
         PlacemarkMapObject placemark = mapObjectCollection.addPlacemark(
-                new Point(note.getLatitude(), note.getLongitude()),
-                ImageProvider.fromResource(this, android.R.drawable.ic_menu_mylocation)
+                new Point(note.getLatitude(), note.getLongitude())
         );
+        placemark.setText(note.getTitle());
         placemark.setUserData(note);
         placemark.addTapListener(markerTapListener);
     }

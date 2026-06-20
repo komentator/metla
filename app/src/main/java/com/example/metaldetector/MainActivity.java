@@ -37,11 +37,10 @@ public class MainActivity extends Activity {
     private static final float TWO_PI = (float) (Math.PI * 2.0);
     private static final float LPF_HZ = 13.0f;
     private static final int INPUT_WIRED = 0;
-    private static final String PREF_OUTPUT_MODE = "output_mode";
+    private static final int INPUT_BLUETOOTH = 1;
     private static final int OUTPUT_WIRED = 0;
     private static final int OUTPUT_BLUETOOTH = 1;
-
-    private AudioManager audioManager;
+    private static final String PREFS = "detector_settings";
     private static final String PREF_INPUT_MODE = "input_mode";
     private static final String PREF_TX_FREQUENCY = "tx_frequency";
     private static final String PREF_TX_LEVEL = "tx_level";
@@ -50,6 +49,7 @@ public class MainActivity extends Activity {
     private static final String PREF_LOG_AUDIO = "log_audio";
     private static final String PREF_TX_CHANNEL = "tx_channel";
     private static final String PREF_RX_CHANNEL = "rx_channel";
+    private static final String PREF_OUTPUT_MODE = "output_mode";
 
     private AudioManager audioManager;
     private AudioRecord audioRecord;
@@ -408,7 +408,6 @@ public class MainActivity extends Activity {
             }
         }
         return null;
-    }
     }
 
     private void stopEngine() {

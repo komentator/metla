@@ -26,6 +26,7 @@ public class SettingsActivity extends Activity {
     private static final String PREF_IRON_FILTER = "iron_filter";
     private static final String PREF_LOG_AUDIO = "log_audio";
     private static final String PREF_TX_CHANNEL = "tx_channel";
+    private static final String PREF_RX_CHANNEL = "rx_channel";
     private static final String PREF_OUTPUT_MODE = "output_mode";
 
     private SharedPreferences prefs;
