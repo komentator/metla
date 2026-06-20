@@ -26,7 +26,7 @@ public class SettingsActivity extends Activity {
     private static final String PREF_IRON_FILTER = "iron_filter";
     private static final String PREF_LOG_AUDIO = "log_audio";
     private static final String PREF_TX_CHANNEL = "tx_channel";
-    private static final String PREF_RX_CHANNEL = "rx_channel";
+    private static final String PREF_OUTPUT_MODE = "output_mode";
 
     private SharedPreferences prefs;
 
@@ -38,6 +38,7 @@ public class SettingsActivity extends Activity {
     private Spinner inputSpinner;
     private Spinner txChannelSpinner;
     private Spinner rxChannelSpinner;
+    private Spinner outputSpinner;
     private SeekBar freqSeek;
     private SeekBar txSeek;
     private Button balanceButton;
@@ -112,6 +113,20 @@ public class SettingsActivity extends Activity {
         rxChannelSpinner.setAdapter(rxAdapter);
         root.addView(rxChannelSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
 
+        // Источник выхода TX
+        TextView outputLabel = smallText("Источник выхода TX", false);
+        root.addView(outputLabel, withMargins(matchWrap(), 0, dp(16), 0, dp(4)));
+
+        outputSpinner = new Spinner(this);
+        ArrayAdapter<String> outAdapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                new String[]{"Физический выход 3,5 мм", "Bluetooth-выход"}
+        );
+        outAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        outputSpinner.setAdapter(outAdapter);
+        root.addView(outputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+
         // TX частота
         freqText = smallText("TX частота: 8000 Гц", false);
         root.addView(freqText, withMargins(matchWrap(), 0, dp(16), 0, 0));
@@ -184,6 +199,15 @@ public class SettingsActivity extends Activity {
         rxChannelSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 prefs.edit().putInt(PREF_RX_CHANNEL, position).apply();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        int outputMode = prefs.getInt(PREF_OUTPUT_MODE, 0);
+        outputSpinner.setSelection(outputMode);
+        outputSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                prefs.edit().putInt(PREF_OUTPUT_MODE, position).apply();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });

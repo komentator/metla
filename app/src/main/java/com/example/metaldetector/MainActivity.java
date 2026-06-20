@@ -37,8 +37,11 @@ public class MainActivity extends Activity {
     private static final float TWO_PI = (float) (Math.PI * 2.0);
     private static final float LPF_HZ = 13.0f;
     private static final int INPUT_WIRED = 0;
-    private static final int INPUT_BLUETOOTH = 1;
-    private static final String PREFS = "detector_settings";
+    private static final String PREF_OUTPUT_MODE = "output_mode";
+    private static final int OUTPUT_WIRED = 0;
+    private static final int OUTPUT_BLUETOOTH = 1;
+
+    private AudioManager audioManager;
     private static final String PREF_INPUT_MODE = "input_mode";
     private static final String PREF_TX_FREQUENCY = "tx_frequency";
     private static final String PREF_TX_LEVEL = "tx_level";
@@ -63,6 +66,7 @@ public class MainActivity extends Activity {
     private ProgressBar amplitudeBar;
     private VectorView vectorView;
     private int inputMode = INPUT_WIRED;
+    private int outputMode = OUTPUT_WIRED;
     private boolean pendingStart = false;
 
     private volatile float txFrequency = 8000f;
@@ -101,6 +105,7 @@ public class MainActivity extends Activity {
 
     private void reloadSettings() {
         inputMode = prefs.getInt(PREF_INPUT_MODE, INPUT_WIRED);
+        outputMode = prefs.getInt(PREF_OUTPUT_MODE, OUTPUT_WIRED);
         int freqKhz = prefs.getInt(PREF_TX_FREQUENCY, 8);
         txFrequency = freqKhz * 1000f;
         int levelPercent = prefs.getInt(PREF_TX_LEVEL, 12);
@@ -112,9 +117,9 @@ public class MainActivity extends Activity {
         rxChannel = prefs.getInt(PREF_RX_CHANNEL, 0);
 
         if (statusText != null && !running) {
-            statusText.setText(inputMode == INPUT_WIRED
-                    ? "TX: левый канал, RX: вход 3,5 мм, звук: правый канал"
-                    : "TX: левый канал, RX: Bluetooth, звук: правый канал");
+            String rxSource = inputMode == INPUT_WIRED ? "вход 3,5 мм" : "Bluetooth";
+            String txSource = outputMode == OUTPUT_WIRED ? "выход 3,5 мм" : "Bluetooth";
+            statusText.setText("TX: " + txSource + ", RX: " + rxSource);
             statusText.setTextColor(Color.rgb(51, 65, 85));
         }
     }
@@ -328,14 +333,17 @@ public class MainActivity extends Activity {
                 return;
             }
 
-            AudioDeviceInfo wiredOutput = findWiredOutputDevice();
-            if (wiredOutput == null) {
+            AudioDeviceInfo outputDevice = findSelectedOutputDevice();
+            if (outputDevice == null) {
                 releaseAudio();
-                statusText.setText("Выход 3,5 мм не найден: подключите TX-усилитель");
+                String errorMsg = outputMode == OUTPUT_WIRED
+                        ? "Выход 3,5 мм не найден: подключите TX-усилитель"
+                        : "Bluetooth-выход не найден: подключите гарнитуру";
+                statusText.setText(errorMsg);
                 statusText.setTextColor(Color.rgb(185, 28, 28));
                 return;
             }
-            audioTrack.setPreferredDevice(wiredOutput);
+            audioTrack.setPreferredDevice(outputDevice);
 
             if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED || audioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
                 releaseAudio();
@@ -351,7 +359,7 @@ public class MainActivity extends Activity {
             playThread = new Thread(this::playLoop, "VLF-TX-Audio");
             recordThread.start();
             playThread.start();
-            statusText.setText("VLF запущен, RX: " + inputDevice.getProductName());
+            statusText.setText("VLF запущен, RX: " + inputDevice.getProductName() + ", TX: " + outputDevice.getProductName());
             statusText.setTextColor(Color.rgb(15, 118, 110));
             startStopButton.setText("Стоп");
         } catch (Exception e) {
@@ -382,16 +390,25 @@ public class MainActivity extends Activity {
         return null;
     }
 
-    private AudioDeviceInfo findWiredOutputDevice() {
+    private AudioDeviceInfo findSelectedOutputDevice() {
         for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
             int type = device.getType();
-            if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+            if (outputMode == OUTPUT_WIRED
+                    && (type == AudioDeviceInfo.TYPE_WIRED_HEADSET
                     || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                    || type == AudioDeviceInfo.TYPE_LINE_ANALOG) {
+                    || type == AudioDeviceInfo.TYPE_LINE_ANALOG)) {
+                return device;
+            }
+            if (outputMode == OUTPUT_BLUETOOTH
+                    && (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                    || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET))) {
                 return device;
             }
         }
         return null;
+    }
     }
 
     private void stopEngine() {
