@@ -3,25 +3,33 @@ package com.example.metaldetector;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.media.AudioFormat;
+import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Bundle;
+import android.os.Build;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ArrayAdapter;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -30,7 +38,12 @@ public class MainActivity extends Activity {
     private static final int SAMPLE_RATE = 44100;
     private static final float TWO_PI = (float) (Math.PI * 2.0);
     private static final float LPF_HZ = 13.0f;
+    private static final int INPUT_WIRED = 0;
+    private static final int INPUT_BLUETOOTH = 1;
+    private static final String PREFS = "detector_settings";
+    private static final String PREF_INPUT_MODE = "input_mode";
 
+    private AudioManager audioManager;
     private AudioRecord audioRecord;
     private AudioTrack audioTrack;
     private Thread recordThread;
@@ -48,6 +61,9 @@ public class MainActivity extends Activity {
     private Button startStopButton;
     private ProgressBar amplitudeBar;
     private VectorView vectorView;
+    private Spinner inputSpinner;
+    private int inputMode = INPUT_WIRED;
+    private boolean pendingStart = false;
 
     private volatile float txFrequency = 8000f;
     private volatile float txLevel = 0.12f;
@@ -66,16 +82,23 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        inputMode = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getInt(PREF_INPUT_MODE, INPUT_WIRED);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         setContentView(createLayout());
     }
 
     private View createLayout() {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setPadding(dp(18), dp(22), dp(18), dp(18));
         root.setBackgroundColor(Color.rgb(246, 248, 251));
+        scrollView.addView(root, new ScrollView.LayoutParams(-1, -2));
 
         TextView title = new TextView(this);
         title.setText("VLF металлоискатель");
@@ -85,7 +108,12 @@ public class MainActivity extends Activity {
         title.setTypeface(null, 1);
         root.addView(title, matchWrap());
 
-        statusText = smallText("TX: левый канал, RX: микрофон, звук: правый канал", true);
+        statusText = smallText(
+                inputMode == INPUT_WIRED
+                        ? "TX: левый канал, RX: вход 3,5 мм, звук: правый канал"
+                        : "TX: левый канал, RX: Bluetooth, звук: правый канал",
+                true
+        );
         root.addView(statusText, withMargins(matchWrap(), 0, dp(6), 0, dp(16)));
 
         startStopButton = new Button(this);
@@ -97,13 +125,49 @@ public class MainActivity extends Activity {
                 statusText.setText("Остановлено");
                 statusText.setTextColor(Color.rgb(51, 65, 85));
                 startStopButton.setText("Старт");
-            } else if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                startEngine();
             } else {
-                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
+                requestStart();
             }
         });
         root.addView(startStopButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+
+        TextView inputLabel = smallText("Источник приёма RX", false);
+        root.addView(inputLabel, withMargins(matchWrap(), 0, 0, 0, dp(4)));
+
+        inputSpinner = new Spinner(this);
+        ArrayAdapter<String> inputAdapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                new String[]{"Физический вход 3,5 мм", "Bluetooth-вход"}
+        );
+        inputAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        inputSpinner.setAdapter(inputAdapter);
+        inputSpinner.setSelection(inputMode, false);
+        inputSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (inputMode == position) {
+                    return;
+                }
+                inputMode = position;
+                getSharedPreferences(PREFS, MODE_PRIVATE)
+                        .edit()
+                        .putInt(PREF_INPUT_MODE, inputMode)
+                        .apply();
+                if (running) {
+                    stopEngine();
+                }
+                statusText.setText(inputMode == INPUT_WIRED
+                        ? "Выбран RX: физический вход 3,5 мм"
+                        : "Выбран RX: Bluetooth-вход");
+                statusText.setTextColor(Color.rgb(51, 65, 85));
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+            }
+        });
+        root.addView(inputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
 
         amplitudeText = metric("-40 dB");
         root.addView(amplitudeText, matchWrap());
@@ -207,14 +271,24 @@ public class MainActivity extends Activity {
         });
         root.addView(ironFilter, withMargins(new LinearLayout.LayoutParams(-1, dp(46)), 0, dp(6), 0, 0));
 
-        return root;
+        return scrollView;
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
+    private void requestStart() {
+        List<String> missing = new ArrayList<>();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
+            missing.add(Manifest.permission.RECORD_AUDIO);
+        }
+        if (inputMode == INPUT_BLUETOOTH
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            missing.add(Manifest.permission.BLUETOOTH_CONNECT);
+        }
+        if (missing.isEmpty()) {
+            startEngine();
+        } else {
+            pendingStart = true;
+            requestPermissions(missing.toArray(new String[0]), REQUEST_RECORD_AUDIO);
         }
     }
 
@@ -233,13 +307,21 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_RECORD_AUDIO
-                && grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            statusText.setText("Разрешение получено. Нажмите Старт.");
-            statusText.setTextColor(Color.rgb(15, 118, 110));
-        } else {
-            statusText.setText("Нужно разрешение на микрофонный вход");
+        if (requestCode != REQUEST_RECORD_AUDIO) {
+            return;
+        }
+        boolean granted = grantResults.length > 0;
+        for (int result : grantResults) {
+            granted &= result == PackageManager.PERMISSION_GRANTED;
+        }
+        if (granted && pendingStart) {
+            pendingStart = false;
+            startEngine();
+        } else if (!granted) {
+            pendingStart = false;
+            statusText.setText(inputMode == INPUT_BLUETOOTH
+                    ? "Нужны разрешения на микрофон и Bluetooth"
+                    : "Нужно разрешение на микрофонный вход");
             statusText.setTextColor(Color.rgb(185, 28, 28));
         }
     }
@@ -250,6 +332,15 @@ public class MainActivity extends Activity {
         }
 
         try {
+            AudioDeviceInfo inputDevice = findSelectedInputDevice();
+            if (inputDevice == null) {
+                statusText.setText(inputMode == INPUT_WIRED
+                        ? "Вход 3,5 мм не найден: подключите CTIA-штекер"
+                        : "Bluetooth-микрофон не найден: подключите гарнитуру");
+                statusText.setTextColor(Color.rgb(185, 28, 28));
+                return;
+            }
+
             int recMin = AudioRecord.getMinBufferSize(
                     SAMPLE_RATE,
                     AudioFormat.CHANNEL_IN_MONO,
@@ -286,6 +377,22 @@ public class MainActivity extends Activity {
                     AudioTrack.MODE_STREAM
             );
 
+            if (!audioRecord.setPreferredDevice(inputDevice)) {
+                releaseAudio();
+                statusText.setText("Не удалось выбрать вход: " + inputDevice.getProductName());
+                statusText.setTextColor(Color.rgb(185, 28, 28));
+                return;
+            }
+
+            AudioDeviceInfo wiredOutput = findWiredOutputDevice();
+            if (wiredOutput == null) {
+                releaseAudio();
+                statusText.setText("Выход 3,5 мм не найден: подключите TX-усилитель");
+                statusText.setTextColor(Color.rgb(185, 28, 28));
+                return;
+            }
+            audioTrack.setPreferredDevice(wiredOutput);
+
             if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED || audioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
                 releaseAudio();
                 statusText.setText("Не удалось открыть полный дуплекс audio");
@@ -300,7 +407,7 @@ public class MainActivity extends Activity {
             playThread = new Thread(this::playLoop, "VLF-TX-Audio");
             recordThread.start();
             playThread.start();
-            statusText.setText("VLF обработка запущена");
+            statusText.setText("VLF запущен, RX: " + inputDevice.getProductName());
             statusText.setTextColor(Color.rgb(15, 118, 110));
             startStopButton.setText("Стоп");
         } catch (Exception e) {
@@ -311,6 +418,36 @@ public class MainActivity extends Activity {
             statusText.setText("Ошибка аудио: " + e.getClass().getSimpleName() + message);
             statusText.setTextColor(Color.rgb(185, 28, 28));
         }
+    }
+
+    private AudioDeviceInfo findSelectedInputDevice() {
+        for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
+            int type = device.getType();
+            if (inputMode == INPUT_WIRED
+                    && (type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                    || type == AudioDeviceInfo.TYPE_LINE_ANALOG)) {
+                return device;
+            }
+            if (inputMode == INPUT_BLUETOOTH
+                    && (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET))) {
+                return device;
+            }
+        }
+        return null;
+    }
+
+    private AudioDeviceInfo findWiredOutputDevice() {
+        for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+            int type = device.getType();
+            if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                    || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                    || type == AudioDeviceInfo.TYPE_LINE_ANALOG) {
+                return device;
+            }
+        }
+        return null;
     }
 
     private void stopEngine() {
