@@ -3,6 +3,7 @@ package com.example.metaldetector;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
@@ -20,12 +21,9 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
-import android.widget.ArrayAdapter;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -42,6 +40,13 @@ public class MainActivity extends Activity {
     private static final int INPUT_BLUETOOTH = 1;
     private static final String PREFS = "detector_settings";
     private static final String PREF_INPUT_MODE = "input_mode";
+    private static final String PREF_TX_FREQUENCY = "tx_frequency";
+    private static final String PREF_TX_LEVEL = "tx_level";
+    private static final String PREF_BALANCE_MODE = "balance_mode";
+    private static final String PREF_IRON_FILTER = "iron_filter";
+    private static final String PREF_LOG_AUDIO = "log_audio";
+    private static final String PREF_TX_CHANNEL = "tx_channel";
+    private static final String PREF_RX_CHANNEL = "rx_channel";
 
     private AudioManager audioManager;
     private AudioRecord audioRecord;
@@ -54,14 +59,9 @@ public class MainActivity extends Activity {
     private TextView amplitudeText;
     private TextView phaseText;
     private TextView rxText;
-    private TextView freqText;
-    private TextView txText;
-    private TextView balanceText;
-    private TextView ironText;
     private Button startStopButton;
     private ProgressBar amplitudeBar;
     private VectorView vectorView;
-    private Spinner inputSpinner;
     private int inputMode = INPUT_WIRED;
     private boolean pendingStart = false;
 
@@ -70,23 +70,53 @@ public class MainActivity extends Activity {
     private volatile float toneI = 0f;
     private volatile float toneQ = 0f;
     private volatile boolean logAudio = true;
-    private volatile int ironFilterMode = 0; // 0 off, 1 soft, 2 hard.
+    private volatile int ironFilterMode = 0;
+    private int balanceMode = 1;
 
     private float rxPhase = 0f;
     private float lpfI = 0f;
     private float lpfQ = 0f;
     private float baseI = 0f;
     private float baseQ = 0f;
-    private int balanceMode = 1; // 0 off, 1 manual, 2 continuous.
+
+    private int txChannel = 0; // 0=left, 1=right
+    private int rxChannel = 0; // 0=mic, 1=left, 2=right
+
+    private SharedPreferences prefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        inputMode = getSharedPreferences(PREFS, MODE_PRIVATE)
-                .getInt(PREF_INPUT_MODE, INPUT_WIRED);
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         setContentView(createLayout());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        reloadSettings();
+    }
+
+    private void reloadSettings() {
+        inputMode = prefs.getInt(PREF_INPUT_MODE, INPUT_WIRED);
+        int freqKhz = prefs.getInt(PREF_TX_FREQUENCY, 8);
+        txFrequency = freqKhz * 1000f;
+        int levelPercent = prefs.getInt(PREF_TX_LEVEL, 12);
+        txLevel = levelPercent / 100f;
+        balanceMode = prefs.getInt(PREF_BALANCE_MODE, 1);
+        ironFilterMode = prefs.getInt(PREF_IRON_FILTER, 0);
+        logAudio = prefs.getBoolean(PREF_LOG_AUDIO, true);
+        txChannel = prefs.getInt(PREF_TX_CHANNEL, 0);
+        rxChannel = prefs.getInt(PREF_RX_CHANNEL, 0);
+
+        if (statusText != null && !running) {
+            statusText.setText(inputMode == INPUT_WIRED
+                    ? "TX: левый канал, RX: вход 3,5 мм, звук: правый канал"
+                    : "TX: левый канал, RX: Bluetooth, звук: правый канал");
+            statusText.setTextColor(Color.rgb(51, 65, 85));
+        }
     }
 
     private View createLayout() {
@@ -131,43 +161,14 @@ public class MainActivity extends Activity {
         });
         root.addView(startStopButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
 
-        TextView inputLabel = smallText("Источник приёма RX", false);
-        root.addView(inputLabel, withMargins(matchWrap(), 0, 0, 0, dp(4)));
-
-        inputSpinner = new Spinner(this);
-        ArrayAdapter<String> inputAdapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_spinner_item,
-                new String[]{"Физический вход 3,5 мм", "Bluetooth-вход"}
-        );
-        inputAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        inputSpinner.setAdapter(inputAdapter);
-        inputSpinner.setSelection(inputMode, false);
-        inputSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                if (inputMode == position) {
-                    return;
-                }
-                inputMode = position;
-                getSharedPreferences(PREFS, MODE_PRIVATE)
-                        .edit()
-                        .putInt(PREF_INPUT_MODE, inputMode)
-                        .apply();
-                if (running) {
-                    stopEngine();
-                }
-                statusText.setText(inputMode == INPUT_WIRED
-                        ? "Выбран RX: физический вход 3,5 мм"
-                        : "Выбран RX: Bluetooth-вход");
-                statusText.setTextColor(Color.rgb(51, 65, 85));
-            }
-
-            @Override
-            public void onNothingSelected(android.widget.AdapterView<?> parent) {
-            }
+        Button settingsButton = new Button(this);
+        settingsButton.setText("Настройки");
+        settingsButton.setAllCaps(false);
+        settingsButton.setOnClickListener(v -> {
+            Intent intent = new Intent(this, SettingsActivity.class);
+            startActivity(intent);
         });
-        root.addView(inputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+        root.addView(settingsButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
 
         amplitudeText = metric("-40 dB");
         root.addView(amplitudeText, matchWrap());
@@ -195,81 +196,6 @@ public class MainActivity extends Activity {
             statusText.setTextColor(Color.rgb(15, 118, 110));
         });
         root.addView(calibrate, withMargins(new LinearLayout.LayoutParams(-1, dp(50)), 0, 0, 0, dp(10)));
-
-        Button balance = new Button(this);
-        balance.setAllCaps(false);
-        balance.setText("Баланс: разово");
-        balance.setOnClickListener(v -> {
-            balanceMode = (balanceMode + 1) % 3;
-            String text = balanceMode == 0 ? "Баланс: выкл." : balanceMode == 1 ? "Баланс: разово" : "Баланс: непрерывно";
-            balance.setText(text);
-            balanceText.setText(text);
-        });
-        root.addView(balance, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, 0, 0, dp(12)));
-
-        balanceText = smallText("Баланс: разово", false);
-        root.addView(balanceText, matchWrap());
-
-        freqText = smallText("TX частота: 8000 Гц", false);
-        root.addView(freqText, withMargins(matchWrap(), 0, dp(10), 0, 0));
-
-        SeekBar freqSeek = new SeekBar(this);
-        freqSeek.setMax(15);
-        freqSeek.setProgress(7);
-        freqSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                txFrequency = (progress + 1) * 1000f;
-                freqText.setText(String.format(Locale.US, "TX частота: %.0f Гц", txFrequency));
-            }
-
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
-        root.addView(freqSeek, new LinearLayout.LayoutParams(-1, -2));
-
-        txText = smallText("TX уровень: 12%", false);
-        root.addView(txText, withMargins(matchWrap(), 0, dp(8), 0, 0));
-
-        SeekBar txSeek = new SeekBar(this);
-        txSeek.setMax(100);
-        txSeek.setProgress(12);
-        txSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                txLevel = progress / 100f;
-                txText.setText(String.format(Locale.US, "TX уровень: %d%%", progress));
-            }
-
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
-        });
-        root.addView(txSeek, new LinearLayout.LayoutParams(-1, -2));
-
-        Button audioScale = new Button(this);
-        audioScale.setAllCaps(false);
-        audioScale.setText("Звук: логарифмический");
-        audioScale.setOnClickListener(v -> {
-            logAudio = !logAudio;
-            audioScale.setText(logAudio ? "Звук: логарифмический" : "Звук: линейный");
-        });
-        root.addView(audioScale, withMargins(new LinearLayout.LayoutParams(-1, dp(46)), 0, dp(8), 0, 0));
-
-        ironText = smallText("Железный фильтр: выкл. (-30°...+10°)", false);
-        root.addView(ironText, withMargins(matchWrap(), 0, dp(10), 0, 0));
-
-        Button ironFilter = new Button(this);
-        ironFilter.setAllCaps(false);
-        ironFilter.setText("Фильтр железа: выкл.");
-        ironFilter.setOnClickListener(v -> {
-            ironFilterMode = (ironFilterMode + 1) % 3;
-            String text = ironFilterMode == 0
-                    ? "Фильтр железа: выкл."
-                    : ironFilterMode == 1 ? "Фильтр железа: мягкий" : "Фильтр железа: жесткий";
-            ironFilter.setText(text);
-            ironText.setText(text + " (-30°...+10°)");
-        });
-        root.addView(ironFilter, withMargins(new LinearLayout.LayoutParams(-1, dp(46)), 0, dp(6), 0, 0));
 
         return scrollView;
     }
@@ -341,9 +267,12 @@ public class MainActivity extends Activity {
                 return;
             }
 
+            boolean stereoRx = rxChannel != 0;
+            int channelConfig = stereoRx ? AudioFormat.CHANNEL_IN_STEREO : AudioFormat.CHANNEL_IN_MONO;
+
             int recMin = AudioRecord.getMinBufferSize(
                     SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO,
+                    channelConfig,
                     AudioFormat.ENCODING_PCM_16BIT
             );
             int playMin = AudioTrack.getMinBufferSize(
@@ -364,7 +293,7 @@ public class MainActivity extends Activity {
             audioRecord = new AudioRecord(
                     MediaRecorder.AudioSource.MIC,
                     SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO,
+                    channelConfig,
                     AudioFormat.ENCODING_PCM_16BIT,
                     recordBufferBytes
             );
@@ -493,7 +422,9 @@ public class MainActivity extends Activity {
     }
 
     private void recordLoop() {
-        short[] buffer = new short[256];
+        boolean stereoRx = rxChannel != 0;
+        int bufferFrames = 256;
+        short[] buffer = new short[bufferFrames * (stereoRx ? 2 : 1)];
         float alpha = 1f - (float) Math.exp(-TWO_PI * LPF_HZ / SAMPLE_RATE);
 
         while (running && audioRecord != null) {
@@ -504,8 +435,14 @@ public class MainActivity extends Activity {
 
             float sumSquares = 0f;
             float peak = 0f;
-            for (int i = 0; i < read; i++) {
-                float x = buffer[i] / 32768f;
+            int frameCount = stereoRx ? read / 2 : read;
+            for (int i = 0; i < frameCount; i++) {
+                float x;
+                if (stereoRx) {
+                    x = (rxChannel == 1) ? buffer[i * 2] / 32768f : buffer[i * 2 + 1] / 32768f;
+                } else {
+                    x = buffer[i] / 32768f;
+                }
                 float ref0 = (float) Math.sin(rxPhase);
                 float ref90 = (float) Math.cos(rxPhase);
 
@@ -530,7 +467,7 @@ public class MainActivity extends Activity {
             float qValue = balanceMode == 0 ? lpfQ : lpfQ - baseQ;
             float amplitude = (float) Math.sqrt(iValue * iValue + qValue * qValue);
             float phaseDeg = (float) Math.toDegrees(Math.atan2(qValue, iValue));
-            float rms = (float) Math.sqrt(sumSquares / read);
+            float rms = (float) Math.sqrt(sumSquares / frameCount);
             float rxLevel = Math.max(rms, peak * 0.35f);
 
             updateAudio(iValue, qValue, amplitude);
@@ -584,8 +521,16 @@ public class MainActivity extends Activity {
                 );
 
                 int index = frame * 2;
-                out[index] = toShort(tx);
-                out[index + 1] = toShort(monitor);
+                float left, right;
+                if (txChannel == 0) {
+                    left = tx;
+                    right = monitor;
+                } else {
+                    left = monitor;
+                    right = tx;
+                }
+                out[index] = toShort(left);
+                out[index + 1] = toShort(right);
 
                 txPhase = wrap(txPhase + TWO_PI * txFrequency / SAMPLE_RATE);
                 tonePhase400 = wrap(tonePhase400 + TWO_PI * 400f / SAMPLE_RATE);
