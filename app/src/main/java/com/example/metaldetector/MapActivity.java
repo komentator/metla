@@ -97,8 +97,9 @@ public class MapActivity extends Activity {
         root.setBackgroundColor(Color.rgb(246, 248, 251));
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int topInset = insets.getSystemWindowInsetTop();
             int bottomInset = insets.getSystemWindowInsetBottom();
-            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), bottomInset);
+            v.setPadding(v.getPaddingLeft(), topInset, v.getPaddingRight(), bottomInset);
             return insets;
         });
 
@@ -136,7 +137,7 @@ public class MapActivity extends Activity {
         // Bottom controls
         LinearLayout controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
-        controls.setPadding(dp(8), dp(8), dp(8), dp(8));
+        controls.setPadding(dp(8), dp(8), dp(8), dp(2));
         controls.setGravity(Gravity.CENTER);
         controls.setBackgroundColor(Color.rgb(246, 248, 251));
 
