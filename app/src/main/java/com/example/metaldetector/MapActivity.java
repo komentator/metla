@@ -150,6 +150,12 @@ public class MapActivity extends Activity {
         addNoteButton.setOnClickListener(v -> showAddNoteDialog());
         controls.addView(addNoteButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
+        Button yandexButton = new Button(this);
+        yandexButton.setText("🗺 Яндекс");
+        yandexButton.setAllCaps(false);
+        yandexButton.setOnClickListener(v -> openYandexMap());
+        controls.addView(yandexButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+
         refreshButton = new Button(this);
         refreshButton.setText("🔄 Обновить");
         refreshButton.setAllCaps(false);
@@ -276,6 +282,18 @@ public class MapActivity extends Activity {
                 .show();
     }
 
+    private void openYandexMap() {
+        GeoPoint point = null;
+        if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
+            point = myLocationOverlay.getMyLocation();
+        } else if (lastKnownLocation != null) {
+            point = lastKnownLocation;
+        } else {
+            point = (GeoPoint) mapView.getMapCenter();
+        }
+        YandexNavigator.openYandexMaps(this, point.getLatitude(), point.getLongitude(), 16);
+    }
+
     private void loadNotesMarkers() {
         // Remove old note markers (keep location overlay and track polyline)
         List<org.osmdroid.views.overlay.Overlay> toKeep = new ArrayList<>();
@@ -318,6 +336,21 @@ public class MapActivity extends Activity {
                 .setNegativeButton("Удалить", (dialog, which) -> {
                     notesDb.deleteNote(note.getId());
                     loadNotesMarkers();
+                })
+                .setNeutralButton("Маршрут", (dialog, which) -> {
+                    double latTo = note.getLatitude();
+                    double lonTo = note.getLongitude();
+                    GeoPoint from = null;
+                    if (myLocationOverlay != null && myLocationOverlay.getMyLocation() != null) {
+                        from = myLocationOverlay.getMyLocation();
+                    } else if (lastKnownLocation != null) {
+                        from = lastKnownLocation;
+                    }
+                    if (from != null) {
+                        YandexNavigator.buildRoute(this, from.getLatitude(), from.getLongitude(), latTo, lonTo);
+                    } else {
+                        YandexNavigator.navigateTo(this, latTo, lonTo);
+                    }
                 })
                 .show();
     }
