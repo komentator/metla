@@ -170,6 +170,15 @@ public class MainActivity extends Activity {
         });
         root.addView(settingsButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
 
+        Button mapButton = new Button(this);
+        mapButton.setText("Карта");
+        mapButton.setAllCaps(false);
+        mapButton.setOnClickListener(v -> {
+            Intent intent = new Intent(this, MapActivity.class);
+            startActivity(intent);
+        });
+        root.addView(mapButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+
         amplitudeText = metric("-40 dB");
         root.addView(amplitudeText, matchWrap());
 
