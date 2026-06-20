@@ -130,6 +130,12 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.rgb(246, 248, 251));
         scrollView.addView(root, new ScrollView.LayoutParams(-1, -2));
 
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int bottomInset = insets.getSystemWindowInsetBottom();
+            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), dp(18) + bottomInset);
+            return insets;
+        });
+
         TextView title = new TextView(this);
         title.setText("VLF металлоискатель");
         title.setTextSize(28);

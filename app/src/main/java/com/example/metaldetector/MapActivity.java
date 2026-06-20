@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
@@ -83,6 +84,12 @@ public class MapActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(0, 0, 0, 0);
         root.setBackgroundColor(Color.rgb(246, 248, 251));
+
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int bottomInset = insets.getSystemWindowInsetBottom();
+            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), bottomInset);
+            return insets;
+        });
 
         // Top bar
         LinearLayout topBar = new LinearLayout(this);
