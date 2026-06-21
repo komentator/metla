@@ -70,6 +70,8 @@ public class MapActivity extends Activity {
     private Button refreshButton;
     private Button backButton;
 
+    private SavedMapPosition savedPosition;
+
     private volatile Point lastKnownLocation = null;
 
     private final MapObjectTapListener markerTapListener = (mapObject, point) -> {
@@ -92,6 +94,7 @@ public class MapActivity extends Activity {
         super.onCreate(savedInstanceState);
         notesDb = new NotesDatabase(this);
         findDb = new FindDatabase(this);
+        savedPosition = new SavedMapPosition(this);
 
         setContentView(createLayout());
 
@@ -234,13 +237,11 @@ public class MapActivity extends Activity {
             Location lastLoc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             if (lastLoc != null) {
                 lastKnownLocation = new Point(lastLoc.getLatitude(), lastLoc.getLongitude());
-                mapView.getMap().move(new CameraPosition(lastKnownLocation, 15.0f, 0.0f, 0.0f));
-            } else {
-                mapView.getMap().move(new CameraPosition(new Point(55.753994, 37.622093), 15.0f, 0.0f, 0.0f));
             }
-        } catch (SecurityException e) {
-            mapView.getMap().move(new CameraPosition(new Point(55.753994, 37.622093), 15.0f, 0.0f, 0.0f));
-        }
+        } catch (SecurityException ignored) {}
+
+        Point saved = new Point(savedPosition.getLat(), savedPosition.getLon());
+        mapView.getMap().move(new CameraPosition(saved, savedPosition.getZoom(), 0.0f, 0.0f));
     }
 
     private void setupTrackPolyline() {
@@ -519,6 +520,8 @@ public class MapActivity extends Activity {
 
     @Override
     protected void onStop() {
+        CameraPosition pos = mapView.getMap().getCameraPosition();
+        savedPosition.save(pos.getTarget().getLatitude(), pos.getTarget().getLongitude(), pos.getZoom());
         mapView.onStop();
         MapKitFactory.getInstance().onStop();
         super.onStop();

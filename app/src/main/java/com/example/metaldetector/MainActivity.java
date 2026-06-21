@@ -100,6 +100,14 @@ public class MainActivity extends Activity {
     private float lastRxLevel = 0f;
     private android.location.LocationManager locationManager;
     private FindDatabase findDb;
+    private SessionLogger sessionLogger;
+    private AudioDeviceMonitor deviceMonitor;
+    private Track currentTrack;
+
+    // Новые UI компоненты
+    private WaveformView waveformView;
+    private PhaseWheel phaseWheel;
+    private SignalMeter signalMeter;
 
     private int txChannel = 0;
     private int rxChannel = 0;
@@ -111,6 +119,13 @@ public class MainActivity extends Activity {
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         locationManager = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
         findDb = new FindDatabase(this);
+        sessionLogger = new SessionLogger();
+        deviceMonitor = new AudioDeviceMonitor(this);
+        deviceMonitor.setCallback((wired, bt) -> runOnUiThread(() -> {
+            statusText.setText("Устройства: провод=" + wired + ", BT=" + bt);
+            statusText.setTextColor(COLOR_TEXT_SECONDARY);
+        }));
+        deviceMonitor.start();
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         setContentView(createLayout());
@@ -218,6 +233,48 @@ public class MainActivity extends Activity {
         vectorView = new VectorView(this);
         vectorCard.addView(vectorView, new LinearLayout.LayoutParams(-1, dp(200)));
         root.addView(vectorCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+
+        // Waveform card
+        LinearLayout waveCard = card();
+        TextView waveLabel = new TextView(this);
+        waveLabel.setText("Осциллограмма");
+        waveLabel.setTextSize(12);
+        waveLabel.setTextColor(COLOR_TEXT_SECONDARY);
+        waveCard.addView(waveLabel, matchWrap());
+        waveformView = new WaveformView(this);
+        waveCard.addView(waveformView, new LinearLayout.LayoutParams(-1, dp(120)));
+        root.addView(waveCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+
+        // PhaseWheel + SignalMeter row
+        LinearLayout metersRow = new LinearLayout(this);
+        metersRow.setOrientation(LinearLayout.HORIZONTAL);
+        metersRow.setGravity(Gravity.CENTER);
+
+        LinearLayout phaseCard = card();
+        phaseCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView phaseLabel = new TextView(this);
+        phaseLabel.setText("Фаза");
+        phaseLabel.setTextSize(12);
+        phaseLabel.setTextColor(COLOR_TEXT_SECONDARY);
+        phaseLabel.setGravity(Gravity.CENTER);
+        phaseCard.addView(phaseLabel, matchWrap());
+        phaseWheel = new PhaseWheel(this);
+        phaseCard.addView(phaseWheel, new LinearLayout.LayoutParams(-1, dp(140)));
+        metersRow.addView(phaseCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
+
+        LinearLayout meterCard = card();
+        meterCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView meterLabel = new TextView(this);
+        meterLabel.setText("Мощность");
+        meterLabel.setTextSize(12);
+        meterLabel.setTextColor(COLOR_TEXT_SECONDARY);
+        meterLabel.setGravity(Gravity.CENTER);
+        meterCard.addView(meterLabel, matchWrap());
+        signalMeter = new SignalMeter(this);
+        meterCard.addView(signalMeter, new LinearLayout.LayoutParams(-1, dp(140)));
+        metersRow.addView(meterCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
+
+        root.addView(metersRow, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
         // FAB row
         LinearLayout fabRow = new LinearLayout(this);
@@ -368,6 +425,8 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         stopEngine();
+        if (deviceMonitor != null) deviceMonitor.stop();
+        if (sessionLogger != null) sessionLogger.stop();
     }
 
     @Override
@@ -450,6 +509,9 @@ public class MainActivity extends Activity {
             statusText.setTextColor(COLOR_GREEN);
             startStopButton.setText("⏹");
             startStopButton.setBackground(fabDrawable(COLOR_RED));
+
+            sessionLogger.start(this);
+            currentTrack = new Track("Трек " + new java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(new java.util.Date()), System.currentTimeMillis());
         } catch (Exception e) {
             running = false;
             releaseAudio();
@@ -493,6 +555,10 @@ public class MainActivity extends Activity {
         recordThread = null;
         playThread = null;
         releaseAudio();
+        sessionLogger.stop();
+        if (currentTrack != null) {
+            currentTrack.endTrack(System.currentTimeMillis());
+        }
         if (startStopButton != null) {
             runOnUiThread(() -> {
                 startStopButton.setText("▶");
@@ -639,12 +705,28 @@ public class MainActivity extends Activity {
             rxText.setText(String.format(Locale.US, "RX Level: %.1f%%", rxLevel * 100f));
             amplitudeBar.setProgress(bar);
             vectorView.setVector(iValue, qValue);
+            waveformView.addSample(rxLevel * 2f - 1f); // normalize -1..1
+            phaseWheel.setPhase(phaseDeg);
+            signalMeter.setDb(db);
 
             if (rxLevel > 0.85f) {
                 statusText.setText("RX перегружен");
                 statusText.setTextColor(COLOR_RED);
             }
         });
+
+        // Log session
+        double lat = 0, lon = 0;
+        try {
+            android.location.Location loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+            if (loc != null) { lat = loc.getLatitude(); lon = loc.getLongitude(); }
+        } catch (SecurityException ignored) {}
+        sessionLogger.log(db, phaseDeg, iValue, qValue, rxLevel, lat, lon);
+
+        // Add to track
+        if (currentTrack != null && lat != 0 && lon != 0) {
+            currentTrack.addPoint(lat, lon, System.currentTimeMillis(), db, phaseDeg);
+        }
     }
 
     private float logScale(float amplitude) {
