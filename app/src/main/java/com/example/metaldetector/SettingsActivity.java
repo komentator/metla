@@ -3,6 +3,7 @@ package com.example.metaldetector;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -28,6 +29,15 @@ public class SettingsActivity extends Activity {
     private static final String PREF_TX_CHANNEL = "tx_channel";
     private static final String PREF_RX_CHANNEL = "rx_channel";
     private static final String PREF_OUTPUT_MODE = "output_mode";
+
+    // Тёмные цвета темы
+    private static final int COLOR_BG = Color.rgb(18, 22, 30);
+    private static final int COLOR_CARD = Color.rgb(28, 34, 46);
+    private static final int COLOR_ACCENT = Color.rgb(0, 200, 220);
+    private static final int COLOR_TEXT_PRIMARY = Color.rgb(230, 240, 255);
+    private static final int COLOR_TEXT_SECONDARY = Color.rgb(140, 160, 190);
+    private static final int COLOR_GREEN = Color.rgb(0, 220, 180);
+    private static final int COLOR_RED = Color.rgb(255, 90, 90);
 
     private SharedPreferences prefs;
 
@@ -57,130 +67,176 @@ public class SettingsActivity extends Activity {
     private View createLayout() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setBackgroundColor(COLOR_BG);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(22), dp(18), dp(18));
-        root.setBackgroundColor(Color.rgb(246, 248, 251));
+        root.setPadding(dp(16), dp(24), dp(16), dp(16));
+        root.setBackgroundColor(COLOR_BG);
         scroll.addView(root, new LinearLayout.LayoutParams(-1, -2));
 
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int topInset = insets.getSystemWindowInsetTop();
+            int bottomInset = insets.getSystemWindowInsetBottom();
+            v.setPadding(v.getPaddingLeft(), dp(24) + topInset, v.getPaddingRight(), dp(16) + bottomInset);
+            return insets;
+        });
+
+        // Title
         TextView title = new TextView(this);
         title.setText("Настройки");
-        title.setTextSize(28);
-        title.setTextColor(Color.rgb(14, 17, 22));
+        title.setTextSize(24);
+        title.setTextColor(COLOR_TEXT_PRIMARY);
         title.setGravity(Gravity.CENTER);
         title.setTypeface(null, 1);
         root.addView(title, matchWrap());
 
-        // Источник RX
-        TextView inputLabel = smallText("Источник приёма RX", false);
-        root.addView(inputLabel, withMargins(matchWrap(), 0, dp(16), 0, dp(4)));
+        // Card: Input/Output
+        LinearLayout ioCard = card();
+        ioCard.addView(sectionLabel("Источник приёма RX"), matchWrap());
+        inputSpinner = styledSpinner(new String[]{"Физический вход 3,5 мм", "Bluetooth-вход"});
+        ioCard.addView(inputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
 
-        inputSpinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_spinner_item,
-                new String[]{"Физический вход 3,5 мм", "Bluetooth-вход"}
-        );
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        inputSpinner.setAdapter(adapter);
-        root.addView(inputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+        ioCard.addView(sectionLabel("Источник выхода TX"), matchWrap());
+        outputSpinner = styledSpinner(new String[]{"Физический выход 3,5 мм", "Bluetooth-выход"});
+        ioCard.addView(outputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
 
-        // Канал TX
-        TextView txChannelLabel = smallText("Канал TX (генерация)", false);
-        root.addView(txChannelLabel, withMargins(matchWrap(), 0, dp(16), 0, dp(4)));
+        ioCard.addView(sectionLabel("Канал TX (генерация)"), matchWrap());
+        txChannelSpinner = styledSpinner(new String[]{"Левый", "Правый"});
+        ioCard.addView(txChannelSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
 
-        txChannelSpinner = new Spinner(this);
-        ArrayAdapter<String> txAdapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_spinner_item,
-                new String[]{"Левый", "Правый"}
-        );
-        txAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        txChannelSpinner.setAdapter(txAdapter);
-        root.addView(txChannelSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+        ioCard.addView(sectionLabel("Канал RX (приём)"), matchWrap());
+        rxChannelSpinner = styledSpinner(new String[]{"Микрофон", "Левый", "Правый"});
+        ioCard.addView(rxChannelSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, 0));
+        root.addView(ioCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
-        // Канал RX
-        TextView rxChannelLabel = smallText("Канал RX (приём)", false);
-        root.addView(rxChannelLabel, withMargins(matchWrap(), 0, dp(16), 0, dp(4)));
+        // Card: TX Frequency
+        LinearLayout freqCard = card();
+        freqText = valueText("TX частота: 8000 Гц");
+        freqCard.addView(freqText, matchWrap());
+        freqSeek = styledSeekBar(15);
+        freqCard.addView(freqSeek, withMargins(new LinearLayout.LayoutParams(-1, dp(36)), 0, dp(8), 0, 0));
+        root.addView(freqCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
-        rxChannelSpinner = new Spinner(this);
-        ArrayAdapter<String> rxAdapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_spinner_item,
-                new String[]{"Микрофон", "Левый", "Правый"}
-        );
-        rxAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        rxChannelSpinner.setAdapter(rxAdapter);
-        root.addView(rxChannelSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+        // Card: TX Level
+        LinearLayout levelCard = card();
+        txText = valueText("TX уровень: 12%");
+        levelCard.addView(txText, matchWrap());
+        txSeek = styledSeekBar(100);
+        levelCard.addView(txSeek, withMargins(new LinearLayout.LayoutParams(-1, dp(36)), 0, dp(8), 0, 0));
+        root.addView(levelCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
-        // Источник выхода TX
-        TextView outputLabel = smallText("Источник выхода TX", false);
-        root.addView(outputLabel, withMargins(matchWrap(), 0, dp(16), 0, dp(4)));
+        // Card: Balance / Iron / Audio Scale
+        LinearLayout filterCard = card();
+        balanceButton = styledButton("Баланс");
+        filterCard.addView(balanceButton, withMargins(matchWrap(), 0, dp(8), 0, dp(4)));
+        balanceText = secondaryText("");
+        filterCard.addView(balanceText, withMargins(matchWrap(), 0, dp(12), 0, dp(8)));
 
-        outputSpinner = new Spinner(this);
-        ArrayAdapter<String> outAdapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_spinner_item,
-                new String[]{"Физический выход 3,5 мм", "Bluetooth-выход"}
-        );
-        outAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        outputSpinner.setAdapter(outAdapter);
-        root.addView(outputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+        ironButton = styledButton("Фильтр железа");
+        filterCard.addView(ironButton, withMargins(matchWrap(), 0, dp(8), 0, dp(4)));
+        ironText = secondaryText("");
+        filterCard.addView(ironText, withMargins(matchWrap(), 0, dp(12), 0, dp(8)));
 
-        // TX частота
-        freqText = smallText("TX частота: 8000 Гц", false);
-        root.addView(freqText, withMargins(matchWrap(), 0, dp(16), 0, 0));
+        audioScaleButton = styledButton("Шкала звука");
+        filterCard.addView(audioScaleButton, withMargins(matchWrap(), 0, dp(8), 0, dp(4)));
+        audioScaleText = secondaryText("");
+        filterCard.addView(audioScaleText, withMargins(matchWrap(), 0, dp(4), 0, 0));
+        root.addView(filterCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
-        freqSeek = new SeekBar(this);
-        freqSeek.setMax(15);
-        root.addView(freqSeek, new LinearLayout.LayoutParams(-1, -2));
-
-        // TX уровень
-        txText = smallText("TX уровень: 12%", false);
-        root.addView(txText, withMargins(matchWrap(), 0, dp(16), 0, 0));
-
-        txSeek = new SeekBar(this);
-        txSeek.setMax(100);
-        root.addView(txSeek, new LinearLayout.LayoutParams(-1, -2));
-
-        // Баланс грунта
-        balanceButton = new Button(this);
-        balanceButton.setAllCaps(false);
-        root.addView(balanceButton, withMargins(new LinearLayout.LayoutParams(-1, dp(50)), 0, dp(16), 0, dp(4)));
-        balanceText = smallText("", false);
-        root.addView(balanceText, matchWrap());
-
-        // Железный фильтр
-        ironButton = new Button(this);
-        ironButton.setAllCaps(false);
-        root.addView(ironButton, withMargins(new LinearLayout.LayoutParams(-1, dp(50)), 0, dp(16), 0, dp(4)));
-        ironText = smallText("", false);
-        root.addView(ironText, matchWrap());
-
-        // Шкала звука
-        audioScaleButton = new Button(this);
-        audioScaleButton.setAllCaps(false);
-        root.addView(audioScaleButton, withMargins(new LinearLayout.LayoutParams(-1, dp(46)), 0, dp(16), 0, dp(4)));
-        audioScaleText = smallText("", false);
-        root.addView(audioScaleText, matchWrap());
-
-        // Назад
-        Button back = new Button(this);
-        back.setText("Назад");
-        back.setAllCaps(false);
+        // Back button
+        Button back = styledButton("← Назад");
         back.setOnClickListener(v -> finish());
-        root.addView(back, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, dp(24), 0, 0));
+        root.addView(back, withMargins(matchWrap(), 0, dp(16), 0, 0));
 
         return scroll;
     }
+
+    // --- UI Helpers ---
+
+    private LinearLayout card() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(12), dp(16), dp(12));
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(COLOR_CARD);
+        gd.setCornerRadius(dp(16));
+        card.setBackground(gd);
+        return card;
+    }
+
+    private TextView sectionLabel(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(12);
+        tv.setTextColor(COLOR_TEXT_SECONDARY);
+        tv.setPadding(0, dp(4), 0, dp(4));
+        return tv;
+    }
+
+    private TextView valueText(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(18);
+        tv.setTextColor(COLOR_TEXT_PRIMARY);
+        tv.setPadding(0, dp(4), 0, dp(4));
+        return tv;
+    }
+
+    private TextView secondaryText(String text) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextSize(13);
+        tv.setTextColor(COLOR_TEXT_SECONDARY);
+        tv.setPadding(0, dp(2), 0, dp(2));
+        return tv;
+    }
+
+    private Spinner styledSpinner(String[] items) {
+        Spinner spinner = new Spinner(this);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, items
+        );
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        spinner.setPopupBackgroundDrawable(cardBg());
+        return spinner;
+    }
+
+    private GradientDrawable cardBg() {
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(COLOR_CARD);
+        gd.setCornerRadius(dp(12));
+        return gd;
+    }
+
+    private SeekBar styledSeekBar(int max) {
+        SeekBar sb = new SeekBar(this);
+        sb.setMax(max);
+        return sb;
+    }
+
+    private Button styledButton(String text) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextColor(COLOR_TEXT_PRIMARY);
+        btn.setTextSize(14);
+        btn.setAllCaps(false);
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(COLOR_CARD);
+        gd.setCornerRadius(dp(12));
+        btn.setBackground(gd);
+        btn.setPadding(dp(8), dp(4), dp(8), dp(4));
+        return btn;
+    }
+
+    // --- Settings Logic ---
 
     private void loadSettings() {
         int inputMode = prefs.getInt(PREF_INPUT_MODE, 0);
         inputSpinner.setSelection(inputMode);
         inputSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 prefs.edit().putInt(PREF_INPUT_MODE, position).apply();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
@@ -279,15 +335,6 @@ public class SettingsActivity extends Activity {
         String text = logAudio ? "Звук: логарифмический" : "Звук: линейный";
         audioScaleButton.setText(text);
         audioScaleText.setText(text);
-    }
-
-    private TextView smallText(String text, boolean centered) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextSize(15);
-        view.setTextColor(Color.rgb(51, 65, 85));
-        view.setGravity(centered ? Gravity.CENTER : Gravity.START);
-        return view;
     }
 
     private LinearLayout.LayoutParams matchWrap() {
