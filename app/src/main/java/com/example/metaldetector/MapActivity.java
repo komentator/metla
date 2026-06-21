@@ -18,7 +18,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.TextView;
+import android.graphics.drawable.GradientDrawable;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -42,6 +42,14 @@ import java.util.List;
 
 public class MapActivity extends Activity {
     private static final int REQUEST_LOCATION = 77;
+
+    private static final int COLOR_BG = Color.rgb(18, 22, 30);
+    private static final int COLOR_CARD = Color.rgb(28, 34, 46);
+    private static final int COLOR_ACCENT = Color.rgb(0, 200, 220);
+    private static final int COLOR_TEXT_PRIMARY = Color.rgb(230, 240, 255);
+    private static final int COLOR_TEXT_SECONDARY = Color.rgb(140, 160, 190);
+    private static final int COLOR_GREEN = Color.rgb(0, 220, 180);
+    private static final int COLOR_RED = Color.rgb(255, 90, 90);
 
     private MapView mapView;
     private MapObjectCollection mapObjectCollection;
@@ -102,7 +110,7 @@ public class MapActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(0, 0, 0, 0);
-        root.setBackgroundColor(Color.rgb(246, 248, 251));
+        root.setBackgroundColor(COLOR_BG);
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             int topInset = insets.getSystemWindowInsetTop();
@@ -115,20 +123,20 @@ public class MapActivity extends Activity {
         LinearLayout topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setPadding(dp(8), dp(8), dp(8), dp(8));
-        topBar.setBackgroundColor(Color.rgb(14, 17, 22));
+        topBar.setBackgroundColor(COLOR_CARD);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
 
         backButton = new Button(this);
         backButton.setText("← Назад");
         backButton.setAllCaps(false);
-        backButton.setTextColor(Color.WHITE);
+        backButton.setTextColor(COLOR_TEXT_PRIMARY);
         backButton.setBackgroundColor(Color.TRANSPARENT);
         backButton.setOnClickListener(v -> finish());
         topBar.addView(backButton, new LinearLayout.LayoutParams(-2, -2));
 
         statusText = new TextView(this);
         statusText.setText("Карта");
-        statusText.setTextColor(Color.WHITE);
+        statusText.setTextColor(COLOR_TEXT_PRIMARY);
         statusText.setTextSize(18);
         statusText.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(0, -2, 1f);
@@ -146,7 +154,7 @@ public class MapActivity extends Activity {
         LinearLayout bottomPanel = new LinearLayout(this);
         bottomPanel.setOrientation(LinearLayout.VERTICAL);
         bottomPanel.setPadding(dp(8), dp(4), dp(8), dp(2));
-        bottomPanel.setBackgroundColor(Color.rgb(246, 248, 251));
+        bottomPanel.setBackgroundColor(COLOR_CARD);
 
         // Row 1
         LinearLayout row1 = new LinearLayout(this);
@@ -311,11 +319,13 @@ public class MapActivity extends Activity {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(dp(24), dp(16), dp(24), dp(16));
+        layout.setBackgroundColor(COLOR_BG);
         scroll.addView(layout);
+        scroll.setBackgroundColor(COLOR_BG);
 
         TextView coordText = new TextView(this);
         coordText.setText(String.format("Координаты: %.5f, %.5f", notePoint.getLatitude(), notePoint.getLongitude()));
-        coordText.setTextColor(Color.rgb(51, 65, 85));
+        coordText.setTextColor(COLOR_TEXT_SECONDARY);
         coordText.setPadding(0, 0, 0, dp(12));
         layout.addView(coordText);
 

@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.drawable.GradientDrawable;
 import android.media.AudioFormat;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
@@ -42,6 +43,7 @@ public class MainActivity extends Activity {
     private static final int OUTPUT_BLUETOOTH = 1;
     private static final String PREFS = "detector_settings";
     private static final String PREF_INPUT_MODE = "input_mode";
+    private static final String PREF_OUTPUT_MODE = "output_mode";
     private static final String PREF_TX_FREQUENCY = "tx_frequency";
     private static final String PREF_TX_LEVEL = "tx_level";
     private static final String PREF_BALANCE_MODE = "balance_mode";
@@ -49,7 +51,15 @@ public class MainActivity extends Activity {
     private static final String PREF_LOG_AUDIO = "log_audio";
     private static final String PREF_TX_CHANNEL = "tx_channel";
     private static final String PREF_RX_CHANNEL = "rx_channel";
-    private static final String PREF_OUTPUT_MODE = "output_mode";
+
+    // Тёмные цвета темы
+    private static final int COLOR_BG = Color.rgb(18, 22, 30);
+    private static final int COLOR_CARD = Color.rgb(28, 34, 46);
+    private static final int COLOR_ACCENT = Color.rgb(0, 200, 220);
+    private static final int COLOR_TEXT_PRIMARY = Color.rgb(230, 240, 255);
+    private static final int COLOR_TEXT_SECONDARY = Color.rgb(140, 160, 190);
+    private static final int COLOR_RED = Color.rgb(255, 90, 90);
+    private static final int COLOR_GREEN = Color.rgb(0, 220, 180);
 
     private AudioManager audioManager;
     private AudioRecord audioRecord;
@@ -83,18 +93,16 @@ public class MainActivity extends Activity {
     private float baseI = 0f;
     private float baseQ = 0f;
 
-    // Последние измеренные значения (для сохранения находки)
-    private volatile float lastAmplitudeDb = -40f;
-    private volatile float lastPhase = 0f;
-    private volatile float lastI = 0f;
-    private volatile float lastQ = 0f;
-    private volatile float lastRxLevel = 0f;
+    private float lastAmplitudeDb = -40f;
+    private float lastPhase = 0f;
+    private float lastI = 0f;
+    private float lastQ = 0f;
+    private float lastRxLevel = 0f;
     private android.location.LocationManager locationManager;
     private FindDatabase findDb;
 
-    private int txChannel = 0; // 0=left, 1=right
-    private int rxChannel = 0; // 0=mic, 1=left, 2=right
-
+    private int txChannel = 0;
+    private int rxChannel = 0;
     private SharedPreferences prefs;
 
     @Override
@@ -128,114 +136,209 @@ public class MainActivity extends Activity {
         rxChannel = prefs.getInt(PREF_RX_CHANNEL, 0);
 
         if (statusText != null && !running) {
-            String rxSource = inputMode == INPUT_WIRED ? "вход 3,5 мм" : "Bluetooth";
-            String txSource = outputMode == OUTPUT_WIRED ? "выход 3,5 мм" : "Bluetooth";
-            statusText.setText("TX: " + txSource + ", RX: " + rxSource);
-            statusText.setTextColor(Color.rgb(51, 65, 85));
+            String rxSource = inputMode == INPUT_WIRED ? "3.5 мм" : "BT";
+            String txSource = outputMode == OUTPUT_WIRED ? "3.5 мм" : "BT";
+            statusText.setText("TX: " + txSource + "  |  RX: " + rxSource);
+            statusText.setTextColor(COLOR_TEXT_SECONDARY);
         }
     }
 
     private View createLayout() {
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setFillViewport(true);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(COLOR_BG);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(18), dp(22), dp(18), dp(18));
-        root.setBackgroundColor(Color.rgb(246, 248, 251));
-        scrollView.addView(root, new ScrollView.LayoutParams(-1, -2));
+        root.setPadding(dp(16), dp(24), dp(16), dp(16));
+        root.setBackgroundColor(COLOR_BG);
+        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
         root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int topInset = insets.getSystemWindowInsetTop();
             int bottomInset = insets.getSystemWindowInsetBottom();
-            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), dp(18) + bottomInset);
+            v.setPadding(v.getPaddingLeft(), dp(24) + topInset, v.getPaddingRight(), dp(16) + bottomInset);
             return insets;
         });
 
+        // Title
         TextView title = new TextView(this);
-        title.setText("VLF металлоискатель");
-        title.setTextSize(28);
-        title.setTextColor(Color.rgb(14, 17, 22));
+        title.setText("VLF Detector");
+        title.setTextSize(24);
+        title.setTextColor(COLOR_TEXT_PRIMARY);
         title.setGravity(Gravity.CENTER);
         title.setTypeface(null, 1);
         root.addView(title, matchWrap());
 
-        statusText = smallText(
-                inputMode == INPUT_WIRED
-                        ? "TX: левый канал, RX: вход 3,5 мм, звук: правый канал"
-                        : "TX: левый канал, RX: Bluetooth, звук: правый канал",
-                true
-        );
-        root.addView(statusText, withMargins(matchWrap(), 0, dp(6), 0, dp(16)));
+        // Status card
+        LinearLayout statusCard = card();
+        statusText = new TextView(this);
+        statusText.setText("TX: 3.5 мм  |  RX: 3.5 мм");
+        statusText.setTextSize(13);
+        statusText.setTextColor(COLOR_TEXT_SECONDARY);
+        statusText.setGravity(Gravity.CENTER);
+        statusCard.addView(statusText, matchWrap());
+        root.addView(statusCard, withMargins(matchWrap(), 0, dp(16), 0, dp(8)));
 
-        startStopButton = new Button(this);
-        startStopButton.setText("Старт");
-        startStopButton.setAllCaps(false);
+        // Main metric card (dB)
+        LinearLayout dbCard = card();
+        amplitudeText = new TextView(this);
+        amplitudeText.setText("-40.0 dB");
+        amplitudeText.setTextSize(56);
+        amplitudeText.setTextColor(COLOR_ACCENT);
+        amplitudeText.setGravity(Gravity.CENTER);
+        amplitudeText.setTypeface(null, 1);
+        dbCard.addView(amplitudeText, matchWrap());
+        root.addView(dbCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+
+        // Progress bar
+        amplitudeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        amplitudeBar.setMax(100);
+        amplitudeBar.setProgressDrawable(createProgressDrawable());
+        root.addView(amplitudeBar, withMargins(new LinearLayout.LayoutParams(-1, dp(6)), 0, dp(8), 0, dp(8)));
+
+        // Phase & I/Q card
+        LinearLayout infoCard = card();
+        phaseText = new TextView(this);
+        phaseText.setText("Фаза: 0°   I: 0.0000   Q: 0.0000");
+        phaseText.setTextSize(13);
+        phaseText.setTextColor(COLOR_TEXT_SECONDARY);
+        phaseText.setGravity(Gravity.CENTER);
+        infoCard.addView(phaseText, matchWrap());
+        rxText = new TextView(this);
+        rxText.setText("RX Level: 0.0%");
+        rxText.setTextSize(13);
+        rxText.setTextColor(COLOR_TEXT_SECONDARY);
+        rxText.setGravity(Gravity.CENTER);
+        infoCard.addView(rxText, withMargins(matchWrap(), 0, dp(4), 0, 0));
+        root.addView(infoCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+
+        // Vector view card
+        LinearLayout vectorCard = card();
+        vectorView = new VectorView(this);
+        vectorCard.addView(vectorView, new LinearLayout.LayoutParams(-1, dp(200)));
+        root.addView(vectorCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+
+        // FAB row
+        LinearLayout fabRow = new LinearLayout(this);
+        fabRow.setOrientation(LinearLayout.HORIZONTAL);
+        fabRow.setGravity(Gravity.CENTER);
+        fabRow.setPadding(0, dp(8), 0, dp(8));
+
+        startStopButton = fab("▶", COLOR_ACCENT);
         startStopButton.setOnClickListener(v -> {
             if (running) {
                 stopEngine();
                 statusText.setText("Остановлено");
-                statusText.setTextColor(Color.rgb(51, 65, 85));
-                startStopButton.setText("Старт");
+                statusText.setTextColor(COLOR_TEXT_SECONDARY);
+                startStopButton.setText("▶");
+                startStopButton.setBackground(fabDrawable(COLOR_ACCENT));
             } else {
                 requestStart();
             }
         });
-        root.addView(startStopButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+        fabRow.addView(startStopButton, withMargins(new LinearLayout.LayoutParams(dp(64), dp(64)), dp(8), 0, dp(8), 0));
 
-        Button settingsButton = new Button(this);
-        settingsButton.setText("Настройки");
-        settingsButton.setAllCaps(false);
-        settingsButton.setOnClickListener(v -> {
-            Intent intent = new Intent(this, SettingsActivity.class);
-            startActivity(intent);
-        });
-        root.addView(settingsButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
-
-        Button mapButton = new Button(this);
-        mapButton.setText("Карта");
-        mapButton.setAllCaps(false);
-        mapButton.setOnClickListener(v -> {
-            Intent intent = new Intent(this, MapActivity.class);
-            startActivity(intent);
-        });
-        root.addView(mapButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
-
-        Button markButton = new Button(this);
-        markButton.setText("📍 Отметить на карте");
-        markButton.setAllCaps(false);
-        markButton.setOnClickListener(v -> saveCurrentFind());
-        root.addView(markButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
-
-        amplitudeText = metric("-40 dB");
-        root.addView(amplitudeText, matchWrap());
-
-        amplitudeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        amplitudeBar.setMax(100);
-        root.addView(amplitudeBar, withMargins(new LinearLayout.LayoutParams(-1, dp(16)), 0, dp(6), 0, dp(12)));
-
-        phaseText = smallText("Фаза: 0°   I: 0.0000   Q: 0.0000", true);
-        root.addView(phaseText, matchWrap());
-
-        rxText = smallText("RX Level: 0.0%", true);
-        root.addView(rxText, withMargins(matchWrap(), 0, dp(4), 0, dp(12)));
-
-        vectorView = new VectorView(this);
-        root.addView(vectorView, withMargins(new LinearLayout.LayoutParams(-1, dp(170)), 0, 0, 0, dp(14)));
-
-        Button calibrate = new Button(this);
-        calibrate.setText("Калибровка");
-        calibrate.setAllCaps(false);
-        calibrate.setOnClickListener(v -> {
+        Button calibrateFab = fab("0", COLOR_CARD);
+        calibrateFab.setOnClickListener(v -> {
             baseI = lpfI;
             baseQ = lpfQ;
-            statusText.setText("Нуль записан: держите катушки без цели");
-            statusText.setTextColor(Color.rgb(15, 118, 110));
+            statusText.setText("Нуль записан");
+            statusText.setTextColor(COLOR_GREEN);
         });
-        root.addView(calibrate, withMargins(new LinearLayout.LayoutParams(-1, dp(50)), 0, 0, 0, dp(10)));
+        fabRow.addView(calibrateFab, withMargins(new LinearLayout.LayoutParams(dp(56), dp(56)), dp(8), 0, dp(8), 0));
 
-        return scrollView;
+        root.addView(fabRow, matchWrap());
+
+        // Side buttons row (Map, Settings, Mark)
+        LinearLayout sideRow = new LinearLayout(this);
+        sideRow.setOrientation(LinearLayout.HORIZONTAL);
+        sideRow.setGravity(Gravity.CENTER);
+
+        Button mapBtn = sideButton("🗺 Карта");
+        mapBtn.setOnClickListener(v -> startActivity(new Intent(this, MapActivity.class)));
+        sideRow.addView(mapBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
+
+        Button settingsBtn = sideButton("⚙ Настройки");
+        settingsBtn.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        sideRow.addView(settingsBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
+
+        Button markBtn = sideButton("📍 Отметить");
+        markBtn.setOnClickListener(v -> saveCurrentFind());
+        sideRow.addView(markBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
+
+        root.addView(sideRow, matchWrap());
+
+        return scroll;
     }
+
+    // --- UI Helpers ---
+
+    private LinearLayout card() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(12), dp(16), dp(12));
+        card.setBackgroundColor(COLOR_CARD);
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(COLOR_CARD);
+        gd.setCornerRadius(dp(16));
+        card.setBackground(gd);
+        return card;
+    }
+
+    private GradientDrawable fabDrawable(int color) {
+        GradientDrawable gd = new GradientDrawable();
+        gd.setShape(GradientDrawable.OVAL);
+        gd.setColor(color);
+        return gd;
+    }
+
+    private Button fab(String text, int color) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextSize(20);
+        btn.setTextColor(COLOR_TEXT_PRIMARY);
+        btn.setBackground(fabDrawable(color));
+        btn.setAllCaps(false);
+        btn.setPadding(0, 0, 0, 0);
+        btn.setGravity(Gravity.CENTER);
+        return btn;
+    }
+
+    private GradientDrawable createProgressDrawable() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setColor(Color.rgb(40, 50, 70));
+        bg.setCornerRadius(dp(3));
+
+        GradientDrawable progress = new GradientDrawable();
+        progress.setShape(GradientDrawable.RECTANGLE);
+        progress.setColor(COLOR_ACCENT);
+        progress.setCornerRadius(dp(3));
+
+        android.graphics.drawable.LayerDrawable layer = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{bg, progress}
+        );
+        layer.setId(0, android.R.id.background);
+        layer.setId(1, android.R.id.progress);
+        return layer;
+    }
+
+    private Button sideButton(String text) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextSize(12);
+        btn.setTextColor(COLOR_TEXT_PRIMARY);
+        btn.setAllCaps(false);
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(COLOR_CARD);
+        gd.setCornerRadius(dp(12));
+        btn.setBackground(gd);
+        btn.setPadding(dp(8), dp(4), dp(8), dp(4));
+        return btn;
+    }
+
+    // --- Engine ---
 
     private void requestStart() {
         List<String> missing = new ArrayList<>();
@@ -270,9 +373,7 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != REQUEST_RECORD_AUDIO) {
-            return;
-        }
+        if (requestCode != REQUEST_RECORD_AUDIO) return;
         boolean granted = grantResults.length > 0;
         for (int result : grantResults) {
             granted &= result == PackageManager.PERMISSION_GRANTED;
@@ -282,90 +383,59 @@ public class MainActivity extends Activity {
             startEngine();
         } else if (!granted) {
             pendingStart = false;
-            statusText.setText(inputMode == INPUT_BLUETOOTH
-                    ? "Нужны разрешения на микрофон и Bluetooth"
-                    : "Нужно разрешение на микрофонный вход");
-            statusText.setTextColor(Color.rgb(185, 28, 28));
+            statusText.setText("Нужно разрешение на микрофон");
+            statusText.setTextColor(COLOR_RED);
         }
     }
 
     private void startEngine() {
-        if (running) {
-            return;
-        }
-
+        if (running) return;
         try {
             AudioDeviceInfo inputDevice = findSelectedInputDevice();
             if (inputDevice == null) {
-                statusText.setText(inputMode == INPUT_WIRED
-                        ? "Вход 3,5 мм не найден: подключите CTIA-штекер"
-                        : "Bluetooth-микрофон не найден: подключите гарнитуру");
-                statusText.setTextColor(Color.rgb(185, 28, 28));
+                statusText.setText(inputMode == INPUT_WIRED ? "Вход 3.5 мм не найден" : "Bluetooth не найден");
+                statusText.setTextColor(COLOR_RED);
                 return;
             }
 
             boolean stereoRx = rxChannel != 0;
             int channelConfig = stereoRx ? AudioFormat.CHANNEL_IN_STEREO : AudioFormat.CHANNEL_IN_MONO;
-
-            int recMin = AudioRecord.getMinBufferSize(
-                    SAMPLE_RATE,
-                    channelConfig,
-                    AudioFormat.ENCODING_PCM_16BIT
-            );
-            int playMin = AudioTrack.getMinBufferSize(
-                    SAMPLE_RATE,
-                    AudioFormat.CHANNEL_OUT_STEREO,
-                    AudioFormat.ENCODING_PCM_16BIT
-            );
+            int recMin = AudioRecord.getMinBufferSize(SAMPLE_RATE, channelConfig, AudioFormat.ENCODING_PCM_16BIT);
+            int playMin = AudioTrack.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
 
             if (recMin <= 0 || playMin <= 0) {
-                statusText.setText("Аудиоустройство недоступно");
-                statusText.setTextColor(Color.rgb(185, 28, 28));
+                statusText.setText("Аудио недоступно");
+                statusText.setTextColor(COLOR_RED);
                 return;
             }
 
             int recordBufferBytes = alignBytes(Math.max(recMin, SAMPLE_RATE / 4), 2);
             int playBufferBytes = alignBytes(Math.max(playMin, SAMPLE_RATE / 4), 4);
 
-            audioRecord = new AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    SAMPLE_RATE,
-                    channelConfig,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    recordBufferBytes
-            );
-            audioTrack = new AudioTrack(
-                    AudioManager.STREAM_MUSIC,
-                    SAMPLE_RATE,
-                    AudioFormat.CHANNEL_OUT_STEREO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    playBufferBytes,
-                    AudioTrack.MODE_STREAM
-            );
+            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE, channelConfig, AudioFormat.ENCODING_PCM_16BIT, recordBufferBytes);
+            audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT, playBufferBytes, AudioTrack.MODE_STREAM);
 
             if (!audioRecord.setPreferredDevice(inputDevice)) {
                 releaseAudio();
-                statusText.setText("Не удалось выбрать вход: " + inputDevice.getProductName());
-                statusText.setTextColor(Color.rgb(185, 28, 28));
+                statusText.setText("Не удалось выбрать вход");
+                statusText.setTextColor(COLOR_RED);
                 return;
             }
 
             AudioDeviceInfo outputDevice = findSelectedOutputDevice();
             if (outputDevice == null) {
                 releaseAudio();
-                String errorMsg = outputMode == OUTPUT_WIRED
-                        ? "Выход 3,5 мм не найден: подключите TX-усилитель"
-                        : "Bluetooth-выход не найден: подключите гарнитуру";
-                statusText.setText(errorMsg);
-                statusText.setTextColor(Color.rgb(185, 28, 28));
+                String msg = outputMode == OUTPUT_WIRED ? "Выход 3.5 мм не найден" : "Bluetooth-выход не найден";
+                statusText.setText(msg);
+                statusText.setTextColor(COLOR_RED);
                 return;
             }
             audioTrack.setPreferredDevice(outputDevice);
 
             if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED || audioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
                 releaseAudio();
-                statusText.setText("Не удалось открыть полный дуплекс audio");
-                statusText.setTextColor(Color.rgb(185, 28, 28));
+                statusText.setText("Не удалось открыть audio");
+                statusText.setTextColor(COLOR_RED);
                 return;
             }
 
@@ -373,34 +443,30 @@ public class MainActivity extends Activity {
             audioTrack.play();
             audioRecord.startRecording();
             recordThread = new Thread(this::recordLoop, "VLF-RX");
-            playThread = new Thread(this::playLoop, "VLF-TX-Audio");
+            playThread = new Thread(this::playLoop, "VLF-TX");
             recordThread.start();
             playThread.start();
-            statusText.setText("VLF запущен, RX: " + inputDevice.getProductName() + ", TX: " + outputDevice.getProductName());
-            statusText.setTextColor(Color.rgb(15, 118, 110));
-            startStopButton.setText("Стоп");
+            statusText.setText("VLF запущен");
+            statusText.setTextColor(COLOR_GREEN);
+            startStopButton.setText("⏹");
+            startStopButton.setBackground(fabDrawable(COLOR_RED));
         } catch (Exception e) {
             running = false;
             releaseAudio();
             Log.e(TAG, "Audio engine failed", e);
-            String message = e.getMessage() == null ? "" : ": " + e.getMessage();
-            statusText.setText("Ошибка аудио: " + e.getClass().getSimpleName() + message);
-            statusText.setTextColor(Color.rgb(185, 28, 28));
+            String msg = e.getMessage() == null ? "" : ": " + e.getMessage();
+            statusText.setText("Ошибка: " + e.getClass().getSimpleName() + msg);
+            statusText.setTextColor(COLOR_RED);
         }
     }
 
     private AudioDeviceInfo findSelectedInputDevice() {
         for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             int type = device.getType();
-            if (inputMode == INPUT_WIRED
-                    && (type == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                    || type == AudioDeviceInfo.TYPE_LINE_ANALOG)) {
+            if (inputMode == INPUT_WIRED && (type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_LINE_ANALOG)) {
                 return device;
             }
-            if (inputMode == INPUT_BLUETOOTH
-                    && (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET))) {
+            if (inputMode == INPUT_BLUETOOTH && (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET))) {
                 return device;
             }
         }
@@ -410,17 +476,10 @@ public class MainActivity extends Activity {
     private AudioDeviceInfo findSelectedOutputDevice() {
         for (AudioDeviceInfo device : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
             int type = device.getType();
-            if (outputMode == OUTPUT_WIRED
-                    && (type == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                    || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                    || type == AudioDeviceInfo.TYPE_LINE_ANALOG)) {
+            if (outputMode == OUTPUT_WIRED && (type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || type == AudioDeviceInfo.TYPE_LINE_ANALOG)) {
                 return device;
             }
-            if (outputMode == OUTPUT_BLUETOOTH
-                    && (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                    || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    && type == AudioDeviceInfo.TYPE_BLE_HEADSET))) {
+            if (outputMode == OUTPUT_BLUETOOTH && (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET))) {
                 return device;
             }
         }
@@ -435,38 +494,29 @@ public class MainActivity extends Activity {
         playThread = null;
         releaseAudio();
         if (startStopButton != null) {
-            runOnUiThread(() -> startStopButton.setText("Старт"));
+            runOnUiThread(() -> {
+                startStopButton.setText("▶");
+                startStopButton.setBackground(fabDrawable(COLOR_ACCENT));
+            });
         }
     }
 
     private void releaseAudio() {
         if (audioRecord != null) {
-            try {
-                audioRecord.stop();
-            } catch (IllegalStateException ignored) {
-            }
+            try { audioRecord.stop(); } catch (IllegalStateException ignored) {}
             audioRecord.release();
             audioRecord = null;
         }
         if (audioTrack != null) {
-            try {
-                audioTrack.stop();
-            } catch (IllegalStateException ignored) {
-            }
+            try { audioTrack.stop(); } catch (IllegalStateException ignored) {}
             audioTrack.release();
             audioTrack = null;
         }
     }
 
     private void joinThread(Thread thread) {
-        if (thread == null) {
-            return;
-        }
-        try {
-            thread.join(500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        if (thread == null) return;
+        try { thread.join(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
     private void recordLoop() {
@@ -477,9 +527,7 @@ public class MainActivity extends Activity {
 
         while (running && audioRecord != null) {
             int read = audioRecord.read(buffer, 0, buffer.length);
-            if (read <= 0) {
-                continue;
-            }
+            if (read <= 0) continue;
 
             float sumSquares = 0f;
             float peak = 0f;
@@ -498,9 +546,7 @@ public class MainActivity extends Activity {
                 lpfQ += alpha * ((x * ref90 * 2f) - lpfQ);
 
                 rxPhase += TWO_PI * txFrequency / SAMPLE_RATE;
-                if (rxPhase >= TWO_PI) {
-                    rxPhase -= TWO_PI;
-                }
+                if (rxPhase >= TWO_PI) rxPhase -= TWO_PI;
 
                 sumSquares += x * x;
                 peak = Math.max(peak, Math.abs(x));
@@ -534,11 +580,8 @@ public class MainActivity extends Activity {
             scale = clamp(amplitude * 30f, 0f, 1f);
         }
         if (isIronSector(phaseDeg)) {
-            if (ironFilterMode == 2) {
-                scale = 0f;
-            } else if (ironFilterMode == 1) {
-                scale *= 0.2f;
-            }
+            if (ironFilterMode == 2) scale = 0f;
+            else if (ironFilterMode == 1) scale *= 0.2f;
         }
         float sum = absI + absQ + 0.000001f;
         toneI = smooth(toneI, scale * absI / sum, 0.12f);
@@ -563,20 +606,11 @@ public class MainActivity extends Activity {
                 smoothQ += 0.004f * (toneQ - smoothQ);
 
                 float tx = txLevel * (float) Math.sin(txPhase);
-                float monitor = 0.42f * (
-                        smoothI * (float) Math.sin(tonePhase400)
-                                + smoothQ * (float) Math.sin(tonePhase800)
-                );
+                float monitor = 0.42f * (smoothI * (float) Math.sin(tonePhase400) + smoothQ * (float) Math.sin(tonePhase800));
 
                 int index = frame * 2;
-                float left, right;
-                if (txChannel == 0) {
-                    left = tx;
-                    right = monitor;
-                } else {
-                    left = monitor;
-                    right = tx;
-                }
+                float left = txChannel == 0 ? tx : monitor;
+                float right = txChannel == 0 ? monitor : tx;
                 out[index] = toShort(left);
                 out[index + 1] = toShort(right);
 
@@ -593,7 +627,6 @@ public class MainActivity extends Activity {
         float normalizedDb = clamp((db + 40f) / 40f, 0f, 1f);
         int bar = Math.round(normalizedDb * 100f);
 
-        // Сохраняем последние значения для кнопки "Отметить"
         lastAmplitudeDb = db;
         lastPhase = phaseDeg;
         lastI = iValue;
@@ -608,8 +641,8 @@ public class MainActivity extends Activity {
             vectorView.setVector(iValue, qValue);
 
             if (rxLevel > 0.85f) {
-                statusText.setText("RX перегружен: уменьшите TX или усиление RX");
-                statusText.setTextColor(Color.rgb(185, 28, 28));
+                statusText.setText("RX перегружен");
+                statusText.setTextColor(COLOR_RED);
             }
         });
     }
@@ -640,38 +673,6 @@ public class MainActivity extends Activity {
         return remainder == 0 ? value : value + frameBytes - remainder;
     }
 
-    private TextView metric(String text) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextSize(44);
-        view.setTextColor(Color.rgb(14, 17, 22));
-        view.setGravity(Gravity.CENTER);
-        view.setTypeface(null, 1);
-        return view;
-    }
-
-    private TextView smallText(String text, boolean centered) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextSize(15);
-        view.setTextColor(Color.rgb(51, 65, 85));
-        view.setGravity(centered ? Gravity.CENTER : Gravity.START);
-        return view;
-    }
-
-    private LinearLayout.LayoutParams matchWrap() {
-        return new LinearLayout.LayoutParams(-1, -2);
-    }
-
-    private LinearLayout.LayoutParams withMargins(LinearLayout.LayoutParams params, int left, int top, int right, int bottom) {
-        params.setMargins(left, top, right, bottom);
-        return params;
-    }
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
-    }
-
     private void saveCurrentFind() {
         double lat = 0, lon = 0;
         try {
@@ -683,21 +684,33 @@ public class MainActivity extends Activity {
         } catch (SecurityException ignored) {}
 
         if (lat == 0 && lon == 0) {
-            statusText.setText("GPS не доступен: включите геолокацию");
-            statusText.setTextColor(Color.rgb(185, 28, 28));
+            statusText.setText("GPS не доступен");
+            statusText.setTextColor(COLOR_RED);
             return;
         }
 
         String title = String.format(Locale.US, "Находка %.1f dB", lastAmplitudeDb);
-        FindPlace place = new FindPlace(
-                title, lat, lon, System.currentTimeMillis(),
-                lastAmplitudeDb, lastPhase, lastI, lastQ, lastRxLevel
-        );
+        FindPlace place = new FindPlace(title, lat, lon, System.currentTimeMillis(), lastAmplitudeDb, lastPhase, lastI, lastQ, lastRxLevel);
         findDb.addPlace(place);
-        statusText.setText(String.format("Сохранено: %.5f, %.5f | %.1f dB", lat, lon, lastAmplitudeDb));
-        statusText.setTextColor(Color.rgb(15, 118, 110));
+        statusText.setText(String.format("Сохранено: %.5f, %.5f", lat, lon));
+        statusText.setTextColor(COLOR_GREEN);
     }
 
+    // --- Layout helpers ---
+    private LinearLayout.LayoutParams matchWrap() {
+        return new LinearLayout.LayoutParams(-1, -2);
+    }
+
+    private LinearLayout.LayoutParams withMargins(LinearLayout.LayoutParams p, int l, int t, int r, int b) {
+        p.setMargins(l, t, r, b);
+        return p;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    // --- Vector View ---
     private static class VectorView extends View {
         private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint vectorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -707,10 +720,10 @@ public class MainActivity extends Activity {
 
         VectorView(Context context) {
             super(context);
-            gridPaint.setColor(Color.rgb(203, 213, 225));
+            gridPaint.setColor(Color.rgb(50, 60, 80));
             gridPaint.setStrokeWidth(2f);
             gridPaint.setStyle(Paint.Style.STROKE);
-            vectorPaint.setColor(Color.rgb(15, 118, 110));
+            vectorPaint.setColor(Color.rgb(0, 200, 220));
             vectorPaint.setStrokeWidth(5f);
             vectorPaint.setStyle(Paint.Style.STROKE);
             dotPaint.setColor(Color.rgb(245, 158, 11));
