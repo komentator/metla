@@ -305,7 +305,7 @@ public class MainActivity extends Activity {
         return btn;
     }
 
-    private GradientDrawable createProgressDrawable() {
+    private android.graphics.drawable.LayerDrawable createProgressDrawable() {
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.RECTANGLE);
         bg.setColor(Color.rgb(40, 50, 70));

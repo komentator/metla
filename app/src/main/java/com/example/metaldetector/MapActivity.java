@@ -18,6 +18,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.TextView;
 import android.graphics.drawable.GradientDrawable;
 
 import androidx.core.app.ActivityCompat;
@@ -164,7 +165,9 @@ public class MapActivity extends Activity {
         recordButton = new Button(this);
         recordButton.setText("▶ Запись");
         recordButton.setAllCaps(false);
-        recordButton.setTextSize(11);
+        recordButton.setTextColor(COLOR_TEXT_PRIMARY);
+        recordButton.setBackgroundColor(COLOR_CARD);
+        GradientDrawable recBg = new GradientDrawable(); recBg.setColor(COLOR_CARD); recBg.setCornerRadius(dp(12)); recordButton.setBackground(recBg);
         recordButton.setOnClickListener(v -> startRecording());
         row1.addView(recordButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
