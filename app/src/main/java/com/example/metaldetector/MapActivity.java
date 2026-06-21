@@ -27,6 +27,7 @@ import com.yandex.mapkit.MapKitFactory;
 import com.yandex.mapkit.geometry.Point;
 import com.yandex.mapkit.geometry.Polyline;
 import com.yandex.mapkit.map.CameraPosition;
+import com.yandex.mapkit.map.MapType;
 import com.yandex.mapkit.map.MapObjectCollection;
 import com.yandex.mapkit.map.MapObjectTapListener;
 import com.yandex.mapkit.map.PlacemarkMapObject;
@@ -49,7 +50,9 @@ public class MapActivity extends Activity {
     private Handler trackHandler;
     private Runnable trackRunnable;
     private NotesDatabase notesDb;
+    private FindDatabase findDb;
     private LocationManager locationManager;
+    private boolean isSatellite = false;
 
     private TextView statusText;
     private Button recordButton;
@@ -67,6 +70,10 @@ public class MapActivity extends Activity {
                 showNoteDetails((Note) userData);
                 return true;
             }
+            if (userData instanceof FindPlace) {
+                showFindPlaceDetails((FindPlace) userData);
+                return true;
+            }
         }
         return false;
     };
@@ -75,6 +82,7 @@ public class MapActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         notesDb = new NotesDatabase(this);
+        findDb = new FindDatabase(this);
 
         setContentView(createLayout());
 
@@ -82,6 +90,7 @@ public class MapActivity extends Activity {
         setupUserLocation();
         setupTrackPolyline();
         loadNotesMarkers();
+        loadFindPlaces();
         startTrackUpdater();
 
         if (!hasLocationPermission()) {
@@ -133,39 +142,73 @@ public class MapActivity extends Activity {
         mapView.setClickable(true);
         root.addView(mapView, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        // Bottom controls
-        LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.HORIZONTAL);
-        controls.setPadding(dp(8), dp(8), dp(8), dp(2));
-        controls.setGravity(Gravity.CENTER);
-        controls.setBackgroundColor(Color.rgb(246, 248, 251));
+        // Bottom controls — 2 rows
+        LinearLayout bottomPanel = new LinearLayout(this);
+        bottomPanel.setOrientation(LinearLayout.VERTICAL);
+        bottomPanel.setPadding(dp(8), dp(4), dp(8), dp(2));
+        bottomPanel.setBackgroundColor(Color.rgb(246, 248, 251));
+
+        // Row 1
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        row1.setGravity(Gravity.CENTER);
 
         recordButton = new Button(this);
         recordButton.setText("▶ Запись");
         recordButton.setAllCaps(false);
+        recordButton.setTextSize(11);
         recordButton.setOnClickListener(v -> startRecording());
-        controls.addView(recordButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        row1.addView(recordButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         stopButton = new Button(this);
         stopButton.setText("⏹ Стоп");
         stopButton.setAllCaps(false);
+        stopButton.setTextSize(11);
         stopButton.setEnabled(false);
         stopButton.setOnClickListener(v -> stopRecording());
-        controls.addView(stopButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        row1.addView(stopButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         addNoteButton = new Button(this);
         addNoteButton.setText("📝 Заметка");
         addNoteButton.setAllCaps(false);
+        addNoteButton.setTextSize(11);
         addNoteButton.setOnClickListener(v -> showAddNoteDialog());
-        controls.addView(addNoteButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        row1.addView(addNoteButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
+
+        bottomPanel.addView(row1, new LinearLayout.LayoutParams(-1, -2));
+
+        // Row 2
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        row2.setGravity(Gravity.CENTER);
+
+        Button satelliteButton = new Button(this);
+        satelliteButton.setText("🛰 Спутник");
+        satelliteButton.setAllCaps(false);
+        satelliteButton.setTextSize(11);
+        satelliteButton.setOnClickListener(v -> toggleSatellite(satelliteButton));
+        row2.addView(satelliteButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
+
+        Button myPlacesButton = new Button(this);
+        myPlacesButton.setText("📍 Мои места");
+        myPlacesButton.setAllCaps(false);
+        myPlacesButton.setTextSize(11);
+        myPlacesButton.setOnClickListener(v -> showMyPlaces());
+        row2.addView(myPlacesButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         refreshButton = new Button(this);
         refreshButton.setText("🔄 Обновить");
         refreshButton.setAllCaps(false);
-        refreshButton.setOnClickListener(v -> loadNotesMarkers());
-        controls.addView(refreshButton, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        refreshButton.setTextSize(11);
+        refreshButton.setOnClickListener(v -> {
+            loadNotesMarkers();
+            loadFindPlaces();
+        });
+        row2.addView(refreshButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
-        root.addView(controls, new LinearLayout.LayoutParams(-1, -2));
+        bottomPanel.addView(row2, new LinearLayout.LayoutParams(-1, -2));
+
+        root.addView(bottomPanel, new LinearLayout.LayoutParams(-1, -2));
 
         return root;
     }
@@ -324,6 +367,89 @@ public class MapActivity extends Activity {
         );
         placemark.setText(note.getTitle());
         placemark.setUserData(note);
+        placemark.addTapListener(markerTapListener);
+    }
+
+    private void toggleSatellite(Button btn) {
+        isSatellite = !isSatellite;
+        mapView.getMap().setMapType(isSatellite ? MapType.SATELLITE : MapType.MAP);
+        btn.setText(isSatellite ? "🗺 Схема" : "🛰 Спутник");
+    }
+
+    private void showMyPlaces() {
+        List<FindPlace> places = findDb.getAllPlaces();
+        if (places.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Мои места")
+                    .setMessage("Нет сохранённых находок.\n\nИспользуйте кнопку 'Отметить на карте' в главном меню при работе детектора.")
+                    .setPositiveButton("OK", null)
+                    .show();
+            return;
+        }
+        String[] items = new String[places.size()];
+        for (int i = 0; i < places.size(); i++) {
+            FindPlace p = places.get(i);
+            String time = new java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(new java.util.Date(p.getTimestamp()));
+            items[i] = String.format("%s — %.1f dB, %.0f°", time, p.getAmplitudeDb(), p.getPhase());
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Мои места (" + places.size() + ")")
+                .setItems(items, (dialog, which) -> {
+                    FindPlace p = places.get(which);
+                    Point pt = new Point(p.getLatitude(), p.getLongitude());
+                    mapView.getMap().move(new CameraPosition(pt, 18.0f, 0.0f, 0.0f));
+                    showFindPlaceDetails(p);
+                })
+                .setPositiveButton("Закрыть", null)
+                .show();
+    }
+
+    private void showFindPlaceDetails(FindPlace place) {
+        String time = new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", java.util.Locale.getDefault()).format(new java.util.Date(place.getTimestamp()));
+        String msg = String.format(
+                "Координаты: %.5f, %.5f\n" +
+                "Время: %s\n" +
+                "Мощность: %.1f dB\n" +
+                "Фаза: %.0f°\n" +
+                "I: %.4f\n" +
+                "Q: %.4f\n" +
+                "RX Level: %.1f%%",
+                place.getLatitude(), place.getLongitude(),
+                time, place.getAmplitudeDb(), place.getPhase(),
+                place.getIValue(), place.getQValue(), place.getRxLevel() * 100f
+        );
+        new AlertDialog.Builder(this)
+                .setTitle(place.getTitle())
+                .setMessage(msg)
+                .setPositiveButton("OK", null)
+                .setNegativeButton("Удалить", (d, w) -> {
+                    findDb.deletePlace(place.getId());
+                    loadFindPlaces();
+                })
+                .setNeutralButton("Маршрут", (d, w) -> {
+                    Point from = lastKnownLocation;
+                    if (from != null) {
+                        YandexNavigator.buildRoute(this, from.getLatitude(), from.getLongitude(), place.getLatitude(), place.getLongitude());
+                    } else {
+                        YandexNavigator.navigateTo(this, place.getLatitude(), place.getLongitude());
+                    }
+                })
+                .show();
+    }
+
+    private void loadFindPlaces() {
+        List<FindPlace> places = findDb.getAllPlaces();
+        for (FindPlace p : places) {
+            addMarker(p);
+        }
+    }
+
+    private void addMarker(FindPlace place) {
+        PlacemarkMapObject placemark = mapObjectCollection.addPlacemark(
+                new Point(place.getLatitude(), place.getLongitude())
+        );
+        placemark.setText("📍");
+        placemark.setUserData(place);
         placemark.addTapListener(markerTapListener);
     }
 

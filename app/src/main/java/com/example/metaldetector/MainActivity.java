@@ -83,6 +83,15 @@ public class MainActivity extends Activity {
     private float baseI = 0f;
     private float baseQ = 0f;
 
+    // Последние измеренные значения (для сохранения находки)
+    private volatile float lastAmplitudeDb = -40f;
+    private volatile float lastPhase = 0f;
+    private volatile float lastI = 0f;
+    private volatile float lastQ = 0f;
+    private volatile float lastRxLevel = 0f;
+    private android.location.LocationManager locationManager;
+    private FindDatabase findDb;
+
     private int txChannel = 0; // 0=left, 1=right
     private int rxChannel = 0; // 0=mic, 1=left, 2=right
 
@@ -92,6 +101,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        locationManager = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        findDb = new FindDatabase(this);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         setContentView(createLayout());
@@ -189,6 +200,12 @@ public class MainActivity extends Activity {
             startActivity(intent);
         });
         root.addView(mapButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
+
+        Button markButton = new Button(this);
+        markButton.setText("📍 Отметить на карте");
+        markButton.setAllCaps(false);
+        markButton.setOnClickListener(v -> saveCurrentFind());
+        root.addView(markButton, withMargins(new LinearLayout.LayoutParams(-1, dp(52)), 0, 0, 0, dp(14)));
 
         amplitudeText = metric("-40 dB");
         root.addView(amplitudeText, matchWrap());
@@ -576,6 +593,13 @@ public class MainActivity extends Activity {
         float normalizedDb = clamp((db + 40f) / 40f, 0f, 1f);
         int bar = Math.round(normalizedDb * 100f);
 
+        // Сохраняем последние значения для кнопки "Отметить"
+        lastAmplitudeDb = db;
+        lastPhase = phaseDeg;
+        lastI = iValue;
+        lastQ = qValue;
+        lastRxLevel = rxLevel;
+
         runOnUiThread(() -> {
             amplitudeText.setText(String.format(Locale.US, "%.1f dB", db));
             phaseText.setText(String.format(Locale.US, "Фаза: %.0f°   I: %.4f   Q: %.4f", phaseDeg, iValue, qValue));
@@ -646,6 +670,32 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void saveCurrentFind() {
+        double lat = 0, lon = 0;
+        try {
+            android.location.Location loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+            if (loc != null) {
+                lat = loc.getLatitude();
+                lon = loc.getLongitude();
+            }
+        } catch (SecurityException ignored) {}
+
+        if (lat == 0 && lon == 0) {
+            statusText.setText("GPS не доступен: включите геолокацию");
+            statusText.setTextColor(Color.rgb(185, 28, 28));
+            return;
+        }
+
+        String title = String.format(Locale.US, "Находка %.1f dB", lastAmplitudeDb);
+        FindPlace place = new FindPlace(
+                title, lat, lon, System.currentTimeMillis(),
+                lastAmplitudeDb, lastPhase, lastI, lastQ, lastRxLevel
+        );
+        findDb.addPlace(place);
+        statusText.setText(String.format("Сохранено: %.5f, %.5f | %.1f dB", lat, lon, lastAmplitudeDb));
+        statusText.setTextColor(Color.rgb(15, 118, 110));
     }
 
     private static class VectorView extends View {
