@@ -194,9 +194,29 @@ public class SettingsActivity extends Activity {
 
     private Spinner styledSpinner(String[] items) {
         Spinner spinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
                 this, android.R.layout.simple_spinner_item, items
-        );
+        ) {
+            @Override
+            public View getView(int position, View convertView, android.view.ViewGroup parent) {
+                View view = super.getView(position, convertView, parent);
+                if (view instanceof TextView) {
+                    ((TextView) view).setTextColor(COLOR_TEXT_PRIMARY);
+                    ((TextView) view).setTextSize(14);
+                }
+                return view;
+            }
+            @Override
+            public View getDropDownView(int position, View convertView, android.view.ViewGroup parent) {
+                View view = super.getDropDownView(position, convertView, parent);
+                if (view instanceof TextView) {
+                    ((TextView) view).setTextColor(COLOR_TEXT_PRIMARY);
+                    ((TextView) view).setTextSize(14);
+                    view.setBackgroundColor(COLOR_CARD);
+                }
+                return view;
+            }
+        };
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(adapter);
         spinner.setPopupBackgroundDrawable(cardBg());
@@ -323,18 +343,29 @@ public class SettingsActivity extends Activity {
         String text = mode == 0 ? "Баланс: выкл." : mode == 1 ? "Баланс: разово" : "Баланс: непрерывно";
         balanceButton.setText(text);
         balanceText.setText(text);
+        setButtonHighlight(balanceButton, mode != 0);
     }
 
     private void updateIronButton(int mode) {
         String text = mode == 0 ? "Фильтр железа: выкл." : mode == 1 ? "Фильтр железа: мягкий" : "Фильтр железа: жесткий";
         ironButton.setText(text);
         ironText.setText(text + " (-30°...+10°)");
+        setButtonHighlight(ironButton, mode != 0);
     }
 
     private void updateAudioScaleButton(boolean logAudio) {
         String text = logAudio ? "Звук: логарифмический" : "Звук: линейный";
         audioScaleButton.setText(text);
         audioScaleText.setText(text);
+        setButtonHighlight(audioScaleButton, logAudio);
+    }
+
+    private void setButtonHighlight(Button btn, boolean active) {
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(active ? COLOR_ACCENT : COLOR_CARD);
+        gd.setCornerRadius(dp(12));
+        btn.setBackground(gd);
+        btn.setTextColor(active ? Color.rgb(0, 0, 0) : COLOR_TEXT_PRIMARY);
     }
 
     private LinearLayout.LayoutParams matchWrap() {
