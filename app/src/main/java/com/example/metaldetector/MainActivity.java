@@ -176,14 +176,7 @@ public class MainActivity extends Activity {
             return insets;
         });
 
-        // Title
-        TextView title = new TextView(this);
-        title.setText("VLF Detector");
-        title.setTextSize(24);
-        title.setTextColor(COLOR_TEXT_PRIMARY);
-        title.setGravity(Gravity.CENTER);
-        title.setTypeface(null, 1);
-        root.addView(title, matchWrap());
+        // Убран заголовок VLF Detector — title удален
 
         // Status card
         LinearLayout statusCard = card();
@@ -195,16 +188,36 @@ public class MainActivity extends Activity {
         statusCard.addView(statusText, matchWrap());
         root.addView(statusCard, withMargins(matchWrap(), 0, dp(16), 0, dp(8)));
 
-        // Main metric card (dB)
+        // Row: dB (left) + PhaseWheel (right)
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        // dB card — smaller, left side
         LinearLayout dbCard = card();
+        dbCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
         amplitudeText = new TextView(this);
         amplitudeText.setText("-40.0 dB");
-        amplitudeText.setTextSize(56);
+        amplitudeText.setTextSize(28);
         amplitudeText.setTextColor(COLOR_ACCENT);
         amplitudeText.setGravity(Gravity.CENTER);
         amplitudeText.setTypeface(null, 1);
         dbCard.addView(amplitudeText, matchWrap());
-        root.addView(dbCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+        topRow.addView(dbCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), 0, 0, dp(8), 0));
+
+        // PhaseWheel card — right side (was below)
+        LinearLayout phaseCard = card();
+        phaseCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView phaseLabel = new TextView(this);
+        phaseLabel.setText("Фаза");
+        phaseLabel.setTextSize(12);
+        phaseLabel.setTextColor(COLOR_TEXT_SECONDARY);
+        phaseLabel.setGravity(Gravity.CENTER);
+        phaseCard.addView(phaseLabel, matchWrap());
+        phaseWheel = new PhaseWheel(this);
+        phaseCard.addView(phaseWheel, new LinearLayout.LayoutParams(-1, dp(140)));
+        topRow.addView(phaseCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(8), 0, 0, 0));
+
+        root.addView(topRow, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
         // Progress bar
         amplitudeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -245,25 +258,8 @@ public class MainActivity extends Activity {
         waveCard.addView(waveformView, new LinearLayout.LayoutParams(-1, dp(120)));
         root.addView(waveCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
-        // PhaseWheel + SignalMeter row
-        LinearLayout metersRow = new LinearLayout(this);
-        metersRow.setOrientation(LinearLayout.HORIZONTAL);
-        metersRow.setGravity(Gravity.CENTER);
-
-        LinearLayout phaseCard = card();
-        phaseCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView phaseLabel = new TextView(this);
-        phaseLabel.setText("Фаза");
-        phaseLabel.setTextSize(12);
-        phaseLabel.setTextColor(COLOR_TEXT_SECONDARY);
-        phaseLabel.setGravity(Gravity.CENTER);
-        phaseCard.addView(phaseLabel, matchWrap());
-        phaseWheel = new PhaseWheel(this);
-        phaseCard.addView(phaseWheel, new LinearLayout.LayoutParams(-1, dp(140)));
-        metersRow.addView(phaseCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
-
+        // SignalMeter card
         LinearLayout meterCard = card();
-        meterCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
         TextView meterLabel = new TextView(this);
         meterLabel.setText("Мощность");
         meterLabel.setTextSize(12);
@@ -272,9 +268,7 @@ public class MainActivity extends Activity {
         meterCard.addView(meterLabel, matchWrap());
         signalMeter = new SignalMeter(this);
         meterCard.addView(signalMeter, new LinearLayout.LayoutParams(-1, dp(140)));
-        metersRow.addView(meterCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
-
-        root.addView(metersRow, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+        root.addView(meterCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
         // FAB row
         LinearLayout fabRow = new LinearLayout(this);
