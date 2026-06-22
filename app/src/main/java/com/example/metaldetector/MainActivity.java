@@ -310,7 +310,8 @@ public class MainActivity extends Activity {
             });
             fabRow.addView(startStopButton, withMargins(new LinearLayout.LayoutParams(dp(64), dp(64)), dp(8), 0, dp(8), 0));
 
-            Button calibrateFab = fab("0", COLOR_CARD);
+            Button calibrateFab = fab("Баланс", COLOR_CARD);
+            calibrateFab.setTextSize(12);
             calibrateFab.setOnClickListener(v -> {
                 baseI = lpfI;
                 baseQ = lpfQ;
@@ -318,6 +319,18 @@ public class MainActivity extends Activity {
                 statusText.setTextColor(COLOR_GREEN);
             });
             fabRow.addView(calibrateFab, withMargins(new LinearLayout.LayoutParams(dp(56), dp(56)), dp(8), 0, dp(8), 0));
+
+            // Кнопка Усиление (Gain)
+            Button gainFab = fab("Усил", COLOR_CARD);
+            gainFab.setTextSize(12);
+            gainFab.setOnClickListener(v -> autoGain());
+            fabRow.addView(gainFab, withMargins(new LinearLayout.LayoutParams(dp(56), dp(56)), dp(8), 0, dp(8), 0));
+
+            // Кнопка режима (Поиск / Скан)
+            Button modeFab = fab("Поиск", COLOR_CARD);
+            modeFab.setTextSize(12);
+            modeFab.setOnClickListener(v -> toggleMode(modeFab));
+            fabRow.addView(modeFab, withMargins(new LinearLayout.LayoutParams(dp(56), dp(56)), dp(8), 0, dp(8), 0));
 
             root.addView(fabRow, matchWrap());
 
