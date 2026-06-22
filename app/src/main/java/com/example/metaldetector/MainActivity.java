@@ -116,6 +116,22 @@ public class MainActivity extends Activity {
     private int rxChannel = 0;
     private SharedPreferences prefs;
 
+    // Режим работы: 0=поиск, 1=сканирование
+    private int operationMode = 0;
+    private static final String PREF_OPERATION_MODE = "operation_mode";
+    private static final String PREF_SCAN_START_FREQ = "scan_start_freq";
+    private static final String PREF_SCAN_END_FREQ = "scan_end_freq";
+    private volatile float scanStartFreq = 8000f;
+    private volatile float scanEndFreq = 20000f;
+    private volatile boolean scanning = false;
+    private Thread scanThread;
+    private volatile float vectorGain = 1f;
+    private volatile float currentScanFreq = 8000f;
+
+    // Данные сканирования
+    private ArrayList<Float> scanFreqs = new ArrayList<>();
+    private ArrayList<Float> scanAmplitudes = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -159,6 +175,9 @@ public class MainActivity extends Activity {
         logAudio = prefs.getBoolean(PREF_LOG_AUDIO, true);
         txChannel = prefs.getInt(PREF_TX_CHANNEL, 0);
         rxChannel = prefs.getInt(PREF_RX_CHANNEL, 0);
+        operationMode = prefs.getInt(PREF_OPERATION_MODE, 0);
+        scanStartFreq = prefs.getInt(PREF_SCAN_START_FREQ, 8) * 1000f;
+        scanEndFreq = prefs.getInt(PREF_SCAN_END_FREQ, 20) * 1000f;
 
         if (statusText != null && !running) {
             String rxSource = inputMode == INPUT_WIRED ? "3.5 мм" : "BT";
@@ -166,7 +185,8 @@ public class MainActivity extends Activity {
             if (outputMode == OUTPUT_WIRED) txSource = "3.5 мм";
             else if (outputMode == OUTPUT_BLUETOOTH) txSource = "BT";
             else txSource = "Динамик";
-            statusText.setText("TX: " + txSource + "  |  RX: " + rxSource);
+            String modeStr = operationMode == 0 ? "Поиск" : "Скан";
+            statusText.setText("TX: " + txSource + "  |  RX: " + rxSource + "  |  " + modeStr);
             statusText.setTextColor(COLOR_TEXT_SECONDARY);
         }
     }
@@ -549,6 +569,11 @@ public class MainActivity extends Activity {
             currentTrack = new Track("Трек " + new java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(new java.util.Date()), System.currentTimeMillis());
 
             runOnUiThread(() -> showBalanceDialog());
+
+            // Запускаем сканирование если в режиме сканирования
+            if (operationMode == 1) {
+                startScan();
+            }
         } catch (Exception e) {
             running = false;
             releaseAudio();
@@ -620,6 +645,7 @@ public class MainActivity extends Activity {
 
     private void stopEngine() {
         running = false;
+        stopScan();
         joinThread(recordThread);
         joinThread(playThread);
         recordThread = null;
@@ -636,6 +662,94 @@ public class MainActivity extends Activity {
             });
         }
         runOnUiThread(() -> getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON));
+    }
+
+    // --- Автоматическое усиление (Gain) ---
+    private void autoGain() {
+        float amplitude = (float) Math.sqrt(lastI * lastI + lastQ * lastQ);
+        if (amplitude > 0.001f) {
+            vectorGain = 1f / amplitude;
+            // Ограничиваем усиление
+            if (vectorGain > 100f) vectorGain = 100f;
+            statusText.setText("Усиление: x" + String.format(Locale.US, "%.1f", vectorGain));
+            statusText.setTextColor(COLOR_GREEN);
+        } else {
+            statusText.setText("Сигнал слишком слабый для усиления");
+            statusText.setTextColor(COLOR_RED);
+        }
+    }
+
+    // --- Переключение режима (Поиск / Скан) ---
+    private void toggleMode(Button modeBtn) {
+        operationMode = (operationMode + 1) % 2;
+        prefs.edit().putInt(PREF_OPERATION_MODE, operationMode).apply();
+        String modeStr = operationMode == 0 ? "Поиск" : "Скан";
+        modeBtn.setText(modeStr);
+        statusText.setText("Режим: " + modeStr);
+        statusText.setTextColor(COLOR_ACCENT);
+    }
+
+    // --- Сканирование ---
+    private void startScan() {
+        if (scanning) return;
+        scanning = true;
+        scanFreqs.clear();
+        scanAmplitudes.clear();
+        currentScanFreq = scanStartFreq;
+        scanThread = new Thread(this::scanLoop, "VLF-Scan");
+        scanThread.start();
+    }
+
+    private void stopScan() {
+        scanning = false;
+        joinThread(scanThread);
+        scanThread = null;
+    }
+
+    private void scanLoop() {
+        int steps = 20;
+        float freqStep = (scanEndFreq - scanStartFreq) / steps;
+        float[] amplitudes = new float[steps + 1];
+
+        for (int i = 0; i <= steps && scanning; i++) {
+            currentScanFreq = scanStartFreq + freqStep * i;
+            // Ждём стабилизации (пропускаем несколько циклов recordLoop)
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                break;
+            }
+            float amp = (float) Math.sqrt(lastI * lastI + lastQ * lastQ);
+            amplitudes[i] = amp;
+            scanFreqs.add(currentScanFreq);
+            scanAmplitudes.add(amp);
+        }
+
+        // Находим частоту с максимальной амплитудой
+        float maxAmp = 0;
+        int maxIdx = 0;
+        for (int i = 0; i <= steps; i++) {
+            if (amplitudes[i] > maxAmp) {
+                maxAmp = amplitudes[i];
+                maxIdx = i;
+            }
+        }
+
+        final float bestFreq = scanStartFreq + freqStep * maxIdx;
+        final float bestAmp = maxAmp;
+
+        runOnUiThread(() -> {
+            if (bestAmp > 0.01f) {
+                txFrequency = bestFreq;
+                statusText.setText(String.format(Locale.US, "Скан: лучшая частота %.0f Гц, амплитуда %.3f", bestFreq, bestAmp));
+                statusText.setTextColor(COLOR_GREEN);
+            } else {
+                statusText.setText("Скан: сигнал не найден");
+                statusText.setTextColor(COLOR_RED);
+            }
+        });
+
+        scanning = false;
     }
 
     private void releaseAudio() {
@@ -785,7 +899,7 @@ public class MainActivity extends Activity {
             phaseText.setText(String.format(Locale.US, "Фаза: %.0f°   I: %.4f   Q: %.4f", phaseDeg, iValue, qValue));
             rxText.setText(String.format(Locale.US, "RX Level: %.1f%%", rxLevel * 100f));
             amplitudeBar.setProgress(bar);
-            vectorView.setVector(iValue, qValue);
+            vectorView.setVector(iValue, qValue, vectorGain);
             waveformView.addSample(rxLevel * 2f - 1f); // normalize -1..1
             phaseWheel.setPhase(phaseDeg);
             signalMeter.setDb(db);
@@ -873,30 +987,49 @@ public class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
-    // --- Vector View ---
+    // --- Vector View (Lissajous Ellipse) ---
     private static class VectorView extends View {
         private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint vectorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint ellipsePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint tracePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private float iValue = 0f;
         private float qValue = 0f;
+        private float vectorGain = 1f;
+        private final ArrayList<Float> historyI = new ArrayList<>();
+        private final ArrayList<Float> historyQ = new ArrayList<>();
+        private static final int HISTORY_SIZE = 60;
 
         VectorView(Context context) {
             super(context);
             gridPaint.setColor(Color.rgb(50, 60, 80));
             gridPaint.setStrokeWidth(2f);
             gridPaint.setStyle(Paint.Style.STROKE);
-            vectorPaint.setColor(Color.rgb(0, 200, 220));
-            vectorPaint.setStrokeWidth(5f);
-            vectorPaint.setStyle(Paint.Style.STROKE);
+            ellipsePaint.setColor(Color.rgb(0, 200, 220));
+            ellipsePaint.setStrokeWidth(3f);
+            ellipsePaint.setStyle(Paint.Style.STROKE);
             dotPaint.setColor(Color.rgb(245, 158, 11));
             dotPaint.setStyle(Paint.Style.FILL);
+            tracePaint.setColor(Color.argb(100, 0, 200, 220));
+            tracePaint.setStrokeWidth(2f);
+            tracePaint.setStyle(Paint.Style.STROKE);
+        }
+
+        void setVector(float iValue, float qValue, float gain) {
+            this.iValue = iValue;
+            this.qValue = qValue;
+            this.vectorGain = gain;
+            historyI.add(iValue);
+            historyQ.add(qValue);
+            while (historyI.size() > HISTORY_SIZE) {
+                historyI.remove(0);
+                historyQ.remove(0);
+            }
+            invalidate();
         }
 
         void setVector(float iValue, float qValue) {
-            this.iValue = iValue;
-            this.qValue = qValue;
-            invalidate();
+            setVector(iValue, qValue, 1f);
         }
 
         @Override
@@ -908,15 +1041,56 @@ public class MainActivity extends Activity {
             float cy = h / 2f;
             float r = Math.min(w, h) * 0.42f;
 
+            // Grid
             canvas.drawCircle(cx, cy, r, gridPaint);
             canvas.drawLine(cx - r, cy, cx + r, cy, gridPaint);
             canvas.drawLine(cx, cy - r, cx, cy + r, gridPaint);
 
-            float scale = r * 18f;
+            // Calculate ellipse parameters
+            float amplitude = (float) Math.sqrt(iValue * iValue + qValue * qValue);
+            if (amplitude < 0.0001f) {
+                // Draw center dot only
+                canvas.drawCircle(cx, cy, 8f, dotPaint);
+                return;
+            }
+
+            // Scale with gain
+            float scale = r * 15f * vectorGain;
+            float a = Math.abs(iValue) * scale;  // semi-major axis (I component)
+            float b = Math.abs(qValue) * scale;  // semi-minor axis (Q component)
+            float phase = (float) Math.atan2(qValue, iValue);
+
+            // Clamp ellipse size to fit in circle
+            a = Math.min(a, r * 0.9f);
+            b = Math.min(b, r * 0.9f);
+
+            // Draw Lissajous ellipse
+            canvas.save();
+            canvas.translate(cx, cy);
+            canvas.rotate((float) Math.toDegrees(phase));
+
+            android.graphics.RectF rect = new android.graphics.RectF(-a, -b, a, b);
+            canvas.drawOval(rect, ellipsePaint);
+
+            canvas.restore();
+
+            // Draw current point
             float x = cx + clampStatic(iValue * scale, -r, r);
             float y = cy - clampStatic(qValue * scale, -r, r);
-            canvas.drawLine(cx, cy, x, y, vectorPaint);
-            canvas.drawCircle(x, y, 9f, dotPaint);
+            canvas.drawCircle(x, y, 10f, dotPaint);
+
+            // Draw trace (history)
+            if (historyI.size() > 1) {
+                for (int i = 1; i < historyI.size(); i++) {
+                    float alpha = (float) i / historyI.size();
+                    tracePaint.setAlpha((int) (50 + alpha * 100));
+                    float x1 = cx + clampStatic(historyI.get(i - 1) * scale, -r, r);
+                    float y1 = cy - clampStatic(historyQ.get(i - 1) * scale, -r, r);
+                    float x2 = cx + clampStatic(historyI.get(i) * scale, -r, r);
+                    float y2 = cy - clampStatic(historyQ.get(i) * scale, -r, r);
+                    canvas.drawLine(x1, y1, x2, y2, tracePaint);
+                }
+            }
         }
 
         private static float clampStatic(float value, float min, float max) {
