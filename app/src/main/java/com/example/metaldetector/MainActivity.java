@@ -119,20 +119,26 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        locationManager = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        findDb = new FindDatabase(this);
-        sessionLogger = new SessionLogger();
-        deviceMonitor = new AudioDeviceMonitor(this);
-        deviceMonitor.setCallback((wired, bt) -> runOnUiThread(() -> {
-            statusText.setText("Устройства: провод=" + wired + ", BT=" + bt);
-            statusText.setTextColor(COLOR_TEXT_SECONDARY);
-        }));
-        deviceMonitor.start();
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        applyRotation(prefs.getInt(PREF_SCREEN_ROTATION, 0));
-        setVolumeControlStream(AudioManager.STREAM_MUSIC);
-        setContentView(createLayout());
+        try {
+            audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            locationManager = (android.location.LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            findDb = new FindDatabase(this);
+            sessionLogger = new SessionLogger();
+            deviceMonitor = new AudioDeviceMonitor(this);
+            deviceMonitor.setCallback((wired, bt) -> runOnUiThread(() -> {
+                statusText.setText("Устройства: провод=" + wired + ", BT=" + bt);
+                statusText.setTextColor(COLOR_TEXT_SECONDARY);
+            }));
+            deviceMonitor.start();
+            prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            applyRotation(prefs.getInt(PREF_SCREEN_ROTATION, 0));
+            setVolumeControlStream(AudioManager.STREAM_MUSIC);
+            setContentView(createLayout());
+        } catch (Exception e) {
+            Log.e(TAG, "Fatal onCreate error", e);
+            android.widget.Toast.makeText(this, "Ошибка: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+            throw e;
+        }
     }
 
     @Override
@@ -166,174 +172,179 @@ public class MainActivity extends Activity {
     }
 
     private View createLayout() {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setBackgroundColor(COLOR_BG);
+        try {
+            ScrollView scroll = new ScrollView(this);
+            scroll.setFillViewport(true);
+            scroll.setBackgroundColor(COLOR_BG);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(24), dp(16), dp(16));
-        root.setBackgroundColor(COLOR_BG);
-        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
+            LinearLayout root = new LinearLayout(this);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(16), dp(24), dp(16), dp(16));
+            root.setBackgroundColor(COLOR_BG);
+            scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            int topInset = insets.getSystemWindowInsetTop();
-            int bottomInset = insets.getSystemWindowInsetBottom();
-            v.setPadding(v.getPaddingLeft(), dp(24) + topInset, v.getPaddingRight(), dp(16) + bottomInset);
-            return insets;
-        });
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
+                int topInset = insets.getSystemWindowInsetTop();
+                int bottomInset = insets.getSystemWindowInsetBottom();
+                v.setPadding(v.getPaddingLeft(), dp(24) + topInset, v.getPaddingRight(), dp(16) + bottomInset);
+                return insets;
+            });
 
-        // Title
-        TextView title = new TextView(this);
-        title.setText("VLF Detector");
-        title.setTextSize(24);
-        title.setTextColor(COLOR_TEXT_PRIMARY);
-        title.setGravity(Gravity.CENTER);
-        title.setTypeface(null, 1);
-        root.addView(title, matchWrap());
+            // Title
+            TextView title = new TextView(this);
+            title.setText("VLF Detector");
+            title.setTextSize(24);
+            title.setTextColor(COLOR_TEXT_PRIMARY);
+            title.setGravity(Gravity.CENTER);
+            title.setTypeface(null, 1);
+            root.addView(title, matchWrap());
 
-        // Status card
-        LinearLayout statusCard = card();
-        statusText = new TextView(this);
-        statusText.setText("TX: 3.5 мм  |  RX: 3.5 мм");
-        statusText.setTextSize(13);
-        statusText.setTextColor(COLOR_TEXT_SECONDARY);
-        statusText.setGravity(Gravity.CENTER);
-        statusCard.addView(statusText, matchWrap());
-        root.addView(statusCard, withMargins(matchWrap(), 0, dp(16), 0, dp(8)));
+            // Status card
+            LinearLayout statusCard = card();
+            statusText = new TextView(this);
+            statusText.setText("TX: 3.5 мм  |  RX: 3.5 мм");
+            statusText.setTextSize(13);
+            statusText.setTextColor(COLOR_TEXT_SECONDARY);
+            statusText.setGravity(Gravity.CENTER);
+            statusCard.addView(statusText, matchWrap());
+            root.addView(statusCard, withMargins(matchWrap(), 0, dp(16), 0, dp(8)));
 
-        // Main metric card (dB)
-        LinearLayout dbCard = card();
-        amplitudeText = new TextView(this);
-        amplitudeText.setText("-40.0 dB");
-        amplitudeText.setTextSize(56);
-        amplitudeText.setTextColor(COLOR_ACCENT);
-        amplitudeText.setGravity(Gravity.CENTER);
-        amplitudeText.setTypeface(null, 1);
-        dbCard.addView(amplitudeText, matchWrap());
-        root.addView(dbCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+            // Main metric card (dB)
+            LinearLayout dbCard = card();
+            amplitudeText = new TextView(this);
+            amplitudeText.setText("-40.0 dB");
+            amplitudeText.setTextSize(56);
+            amplitudeText.setTextColor(COLOR_ACCENT);
+            amplitudeText.setGravity(Gravity.CENTER);
+            amplitudeText.setTypeface(null, 1);
+            dbCard.addView(amplitudeText, matchWrap());
+            root.addView(dbCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
-        // Progress bar
-        amplitudeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        amplitudeBar.setMax(100);
-        amplitudeBar.setProgressDrawable(createProgressDrawable());
-        root.addView(amplitudeBar, withMargins(new LinearLayout.LayoutParams(-1, dp(6)), 0, dp(8), 0, dp(8)));
+            // Progress bar
+            amplitudeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+            amplitudeBar.setMax(100);
+            amplitudeBar.setProgressDrawable(createProgressDrawable());
+            root.addView(amplitudeBar, withMargins(new LinearLayout.LayoutParams(-1, dp(6)), 0, dp(8), 0, dp(8)));
 
-        // Phase & I/Q card
-        LinearLayout infoCard = card();
-        phaseText = new TextView(this);
-        phaseText.setText("Фаза: 0°   I: 0.0000   Q: 0.0000");
-        phaseText.setTextSize(13);
-        phaseText.setTextColor(COLOR_TEXT_SECONDARY);
-        phaseText.setGravity(Gravity.CENTER);
-        infoCard.addView(phaseText, matchWrap());
-        rxText = new TextView(this);
-        rxText.setText("RX Level: 0.0%");
-        rxText.setTextSize(13);
-        rxText.setTextColor(COLOR_TEXT_SECONDARY);
-        rxText.setGravity(Gravity.CENTER);
-        infoCard.addView(rxText, withMargins(matchWrap(), 0, dp(4), 0, 0));
-        root.addView(infoCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+            // Phase & I/Q card
+            LinearLayout infoCard = card();
+            phaseText = new TextView(this);
+            phaseText.setText("Фаза: 0°   I: 0.0000   Q: 0.0000");
+            phaseText.setTextSize(13);
+            phaseText.setTextColor(COLOR_TEXT_SECONDARY);
+            phaseText.setGravity(Gravity.CENTER);
+            infoCard.addView(phaseText, matchWrap());
+            rxText = new TextView(this);
+            rxText.setText("RX Level: 0.0%");
+            rxText.setTextSize(13);
+            rxText.setTextColor(COLOR_TEXT_SECONDARY);
+            rxText.setGravity(Gravity.CENTER);
+            infoCard.addView(rxText, withMargins(matchWrap(), 0, dp(4), 0, 0));
+            root.addView(infoCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
-        // Vector view card
-        LinearLayout vectorCard = card();
-        vectorView = new VectorView(this);
-        vectorCard.addView(vectorView, new LinearLayout.LayoutParams(-1, dp(260)));
-        root.addView(vectorCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+            // Vector view card
+            LinearLayout vectorCard = card();
+            vectorView = new VectorView(this);
+            vectorCard.addView(vectorView, new LinearLayout.LayoutParams(-1, dp(260)));
+            root.addView(vectorCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
-        // Waveform card
-        LinearLayout waveCard = card();
-        TextView waveLabel = new TextView(this);
-        waveLabel.setText("Осциллограмма");
-        waveLabel.setTextSize(12);
-        waveLabel.setTextColor(COLOR_TEXT_SECONDARY);
-        waveCard.addView(waveLabel, matchWrap());
-        waveformView = new WaveformView(this);
-        waveCard.addView(waveformView, new LinearLayout.LayoutParams(-1, dp(160)));
-        root.addView(waveCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+            // Waveform card
+            LinearLayout waveCard = card();
+            TextView waveLabel = new TextView(this);
+            waveLabel.setText("Осциллограмма");
+            waveLabel.setTextSize(12);
+            waveLabel.setTextColor(COLOR_TEXT_SECONDARY);
+            waveCard.addView(waveLabel, matchWrap());
+            waveformView = new WaveformView(this);
+            waveCard.addView(waveformView, new LinearLayout.LayoutParams(-1, dp(160)));
+            root.addView(waveCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
-        // PhaseWheel + SignalMeter row
-        LinearLayout metersRow = new LinearLayout(this);
-        metersRow.setOrientation(LinearLayout.HORIZONTAL);
-        metersRow.setGravity(Gravity.CENTER);
+            // PhaseWheel + SignalMeter row
+            LinearLayout metersRow = new LinearLayout(this);
+            metersRow.setOrientation(LinearLayout.HORIZONTAL);
+            metersRow.setGravity(Gravity.CENTER);
 
-        LinearLayout phaseCard = card();
-        phaseCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView phaseLabel = new TextView(this);
-        phaseLabel.setText("Фаза");
-        phaseLabel.setTextSize(12);
-        phaseLabel.setTextColor(COLOR_TEXT_SECONDARY);
-        phaseLabel.setGravity(Gravity.CENTER);
-        phaseCard.addView(phaseLabel, matchWrap());
-        phaseWheel = new PhaseWheel(this);
-        phaseCard.addView(phaseWheel, new LinearLayout.LayoutParams(-1, dp(180)));
-        metersRow.addView(phaseCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
+            LinearLayout phaseCard = card();
+            phaseCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
+            TextView phaseLabel = new TextView(this);
+            phaseLabel.setText("Фаза");
+            phaseLabel.setTextSize(12);
+            phaseLabel.setTextColor(COLOR_TEXT_SECONDARY);
+            phaseLabel.setGravity(Gravity.CENTER);
+            phaseCard.addView(phaseLabel, matchWrap());
+            phaseWheel = new PhaseWheel(this);
+            phaseCard.addView(phaseWheel, new LinearLayout.LayoutParams(-1, dp(180)));
+            metersRow.addView(phaseCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
 
-        LinearLayout meterCard = card();
-        meterCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
-        TextView meterLabel = new TextView(this);
-        meterLabel.setText("Мощность");
-        meterLabel.setTextSize(12);
-        meterLabel.setTextColor(COLOR_TEXT_SECONDARY);
-        meterLabel.setGravity(Gravity.CENTER);
-        meterCard.addView(meterLabel, matchWrap());
-        signalMeter = new SignalMeter(this);
-        meterCard.addView(signalMeter, new LinearLayout.LayoutParams(-1, dp(180)));
-        metersRow.addView(meterCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
+            LinearLayout meterCard = card();
+            meterCard.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1f));
+            TextView meterLabel = new TextView(this);
+            meterLabel.setText("Мощность");
+            meterLabel.setTextSize(12);
+            meterLabel.setTextColor(COLOR_TEXT_SECONDARY);
+            meterLabel.setGravity(Gravity.CENTER);
+            meterCard.addView(meterLabel, matchWrap());
+            signalMeter = new SignalMeter(this);
+            meterCard.addView(signalMeter, new LinearLayout.LayoutParams(-1, dp(180)));
+            metersRow.addView(meterCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
 
-        root.addView(metersRow, withMargins(matchWrap(), 0, 0, 0, dp(12)));
+            root.addView(metersRow, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
-        // FAB row
-        LinearLayout fabRow = new LinearLayout(this);
-        fabRow.setOrientation(LinearLayout.HORIZONTAL);
-        fabRow.setGravity(Gravity.CENTER);
-        fabRow.setPadding(0, dp(8), 0, dp(8));
+            // FAB row
+            LinearLayout fabRow = new LinearLayout(this);
+            fabRow.setOrientation(LinearLayout.HORIZONTAL);
+            fabRow.setGravity(Gravity.CENTER);
+            fabRow.setPadding(0, dp(8), 0, dp(8));
 
-        startStopButton = fab("▶", COLOR_ACCENT);
-        startStopButton.setOnClickListener(v -> {
-            if (running) {
-                stopEngine();
-                statusText.setText("Остановлено");
-                statusText.setTextColor(COLOR_TEXT_SECONDARY);
-                startStopButton.setText("▶");
-                startStopButton.setBackground(fabDrawable(COLOR_ACCENT));
-            } else {
-                requestStart();
-            }
-        });
-        fabRow.addView(startStopButton, withMargins(new LinearLayout.LayoutParams(dp(64), dp(64)), dp(8), 0, dp(8), 0));
+            startStopButton = fab("▶", COLOR_ACCENT);
+            startStopButton.setOnClickListener(v -> {
+                if (running) {
+                    stopEngine();
+                    statusText.setText("Остановлено");
+                    statusText.setTextColor(COLOR_TEXT_SECONDARY);
+                    startStopButton.setText("▶");
+                    startStopButton.setBackground(fabDrawable(COLOR_ACCENT));
+                } else {
+                    requestStart();
+                }
+            });
+            fabRow.addView(startStopButton, withMargins(new LinearLayout.LayoutParams(dp(64), dp(64)), dp(8), 0, dp(8), 0));
 
-        Button calibrateFab = fab("0", COLOR_CARD);
-        calibrateFab.setOnClickListener(v -> {
-            baseI = lpfI;
-            baseQ = lpfQ;
-            statusText.setText("Нуль записан");
-            statusText.setTextColor(COLOR_GREEN);
-        });
-        fabRow.addView(calibrateFab, withMargins(new LinearLayout.LayoutParams(dp(56), dp(56)), dp(8), 0, dp(8), 0));
+            Button calibrateFab = fab("0", COLOR_CARD);
+            calibrateFab.setOnClickListener(v -> {
+                baseI = lpfI;
+                baseQ = lpfQ;
+                statusText.setText("Нуль записан");
+                statusText.setTextColor(COLOR_GREEN);
+            });
+            fabRow.addView(calibrateFab, withMargins(new LinearLayout.LayoutParams(dp(56), dp(56)), dp(8), 0, dp(8), 0));
 
-        root.addView(fabRow, matchWrap());
+            root.addView(fabRow, matchWrap());
 
-        // Side buttons row (Map, Settings, Mark)
-        LinearLayout sideRow = new LinearLayout(this);
-        sideRow.setOrientation(LinearLayout.HORIZONTAL);
-        sideRow.setGravity(Gravity.CENTER);
+            // Side buttons row (Map, Settings, Mark)
+            LinearLayout sideRow = new LinearLayout(this);
+            sideRow.setOrientation(LinearLayout.HORIZONTAL);
+            sideRow.setGravity(Gravity.CENTER);
 
-        Button mapBtn = sideButton("🗺 Карта");
-        mapBtn.setOnClickListener(v -> startActivity(new Intent(this, MapActivity.class)));
-        sideRow.addView(mapBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
+            Button mapBtn = sideButton("🗺 Карта");
+            mapBtn.setOnClickListener(v -> startActivity(new Intent(this, MapActivity.class)));
+            sideRow.addView(mapBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
 
-        Button settingsBtn = sideButton("⚙ Настройки");
-        settingsBtn.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
-        sideRow.addView(settingsBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
+            Button settingsBtn = sideButton("⚙ Настройки");
+            settingsBtn.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+            sideRow.addView(settingsBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
 
-        Button markBtn = sideButton("📍 Отметить");
-        markBtn.setOnClickListener(v -> saveCurrentFind());
-        sideRow.addView(markBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
+            Button markBtn = sideButton("📍 Отметить");
+            markBtn.setOnClickListener(v -> saveCurrentFind());
+            sideRow.addView(markBtn, withMargins(new LinearLayout.LayoutParams(0, dp(48), 1f), dp(4), dp(8), dp(4), 0));
 
-        root.addView(sideRow, matchWrap());
+            root.addView(sideRow, matchWrap());
 
-        return scroll;
+            return scroll;
+        } catch (Exception e) {
+            Log.e(TAG, "createLayout failed", e);
+            throw e;
+        }
     }
 
     // --- UI Helpers ---
