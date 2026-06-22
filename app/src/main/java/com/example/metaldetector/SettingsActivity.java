@@ -29,6 +29,12 @@ public class SettingsActivity extends Activity {
     private static final String PREF_TX_CHANNEL = "tx_channel";
     private static final String PREF_RX_CHANNEL = "rx_channel";
     private static final String PREF_OUTPUT_MODE = "output_mode";
+    private static final String PREF_SCREEN_ROTATION = "screen_rotation"; // 0=auto, 1=portrait, 2=landscape, 3=reverse_portrait, 4=reverse_landscape
+    private static final int ROTATION_AUTO = 0;
+    private static final int ROTATION_PORTRAIT = 1;
+    private static final int ROTATION_LANDSCAPE = 2;
+    private static final int ROTATION_REVERSE_PORTRAIT = 3;
+    private static final int ROTATION_REVERSE_LANDSCAPE = 4;
 
     // Тёмные цвета темы
     private static final int COLOR_BG = Color.rgb(18, 22, 30);
@@ -50,6 +56,7 @@ public class SettingsActivity extends Activity {
     private Spinner txChannelSpinner;
     private Spinner rxChannelSpinner;
     private Spinner outputSpinner;
+    private Spinner rotationSpinner;
     private SeekBar freqSeek;
     private SeekBar txSeek;
     private Button balanceButton;
@@ -107,7 +114,11 @@ public class SettingsActivity extends Activity {
 
         ioCard.addView(sectionLabel("Канал RX (приём)"), matchWrap());
         rxChannelSpinner = styledSpinner(new String[]{"Микрофон", "Левый", "Правый"});
-        ioCard.addView(rxChannelSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, 0));
+        ioCard.addView(rxChannelSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
+
+        ioCard.addView(sectionLabel("Поворот экрана"), matchWrap());
+        rotationSpinner = styledSpinner(new String[]{"Авто", "Портрет", "Ландшафт", "Портрет (180°)", "Ландшафт (180°)"});
+        ioCard.addView(rotationSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, 0));
         root.addView(ioCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
         // Card: TX Frequency
@@ -285,6 +296,16 @@ public class SettingsActivity extends Activity {
         outputSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 prefs.edit().putInt(PREF_OUTPUT_MODE, position).apply();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        int rotation = prefs.getInt(PREF_SCREEN_ROTATION, ROTATION_AUTO);
+        rotationSpinner.setSelection(rotation);
+        rotationSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                prefs.edit().putInt(PREF_SCREEN_ROTATION, position).apply();
+                applyRotation(position);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
