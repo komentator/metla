@@ -234,7 +234,7 @@ public class MainActivity extends Activity {
         // Vector view card
         LinearLayout vectorCard = card();
         vectorView = new VectorView(this);
-        vectorCard.addView(vectorView, new LinearLayout.LayoutParams(-1, dp(200)));
+        vectorCard.addView(vectorView, new LinearLayout.LayoutParams(-1, dp(260)));
         root.addView(vectorCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
         // Waveform card
@@ -245,7 +245,7 @@ public class MainActivity extends Activity {
         waveLabel.setTextColor(COLOR_TEXT_SECONDARY);
         waveCard.addView(waveLabel, matchWrap());
         waveformView = new WaveformView(this);
-        waveCard.addView(waveformView, new LinearLayout.LayoutParams(-1, dp(120)));
+        waveCard.addView(waveformView, new LinearLayout.LayoutParams(-1, dp(160)));
         root.addView(waveCard, withMargins(matchWrap(), 0, 0, 0, dp(12)));
 
         // PhaseWheel + SignalMeter row
@@ -262,7 +262,7 @@ public class MainActivity extends Activity {
         phaseLabel.setGravity(Gravity.CENTER);
         phaseCard.addView(phaseLabel, matchWrap());
         phaseWheel = new PhaseWheel(this);
-        phaseCard.addView(phaseWheel, new LinearLayout.LayoutParams(-1, dp(140)));
+        phaseCard.addView(phaseWheel, new LinearLayout.LayoutParams(-1, dp(180)));
         metersRow.addView(phaseCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
 
         LinearLayout meterCard = card();
@@ -274,7 +274,7 @@ public class MainActivity extends Activity {
         meterLabel.setGravity(Gravity.CENTER);
         meterCard.addView(meterLabel, matchWrap());
         signalMeter = new SignalMeter(this);
-        meterCard.addView(signalMeter, new LinearLayout.LayoutParams(-1, dp(140)));
+        meterCard.addView(signalMeter, new LinearLayout.LayoutParams(-1, dp(180)));
         metersRow.addView(meterCard, withMargins(new LinearLayout.LayoutParams(0, -2, 1f), dp(4), 0, dp(4), 0));
 
         root.addView(metersRow, withMargins(matchWrap(), 0, 0, 0, dp(12)));
