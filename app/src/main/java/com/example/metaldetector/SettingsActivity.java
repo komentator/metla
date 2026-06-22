@@ -67,6 +67,7 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        applyRotation(prefs.getInt(PREF_SCREEN_ROTATION, ROTATION_AUTO));
         setContentView(createLayout());
         loadSettings();
     }
@@ -105,7 +106,7 @@ public class SettingsActivity extends Activity {
         ioCard.addView(inputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
 
         ioCard.addView(sectionLabel("Источник выхода TX"), matchWrap());
-        outputSpinner = styledSpinner(new String[]{"Физический выход 3,5 мм", "Bluetooth-выход"});
+        outputSpinner = styledSpinner(new String[]{"Физический выход 3,5 мм", "Bluetooth-выход", "Встроенный динамик"});
         ioCard.addView(outputSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
 
         ioCard.addView(sectionLabel("Канал TX (генерация)"), matchWrap());
@@ -387,6 +388,26 @@ public class SettingsActivity extends Activity {
         gd.setCornerRadius(dp(12));
         btn.setBackground(gd);
         btn.setTextColor(active ? Color.rgb(0, 0, 0) : COLOR_TEXT_PRIMARY);
+    }
+
+    private void applyRotation(int rotation) {
+        switch (rotation) {
+            case ROTATION_AUTO:
+                setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                break;
+            case ROTATION_PORTRAIT:
+                setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                break;
+            case ROTATION_LANDSCAPE:
+                setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                break;
+            case ROTATION_REVERSE_PORTRAIT:
+                setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT);
+                break;
+            case ROTATION_REVERSE_LANDSCAPE:
+                setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE);
+                break;
+        }
     }
 
     private LinearLayout.LayoutParams matchWrap() {

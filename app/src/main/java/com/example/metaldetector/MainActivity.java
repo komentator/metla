@@ -130,6 +130,7 @@ public class MainActivity extends Activity {
         }));
         deviceMonitor.start();
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        applyRotation(prefs.getInt(PREF_SCREEN_ROTATION, 0));
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         setContentView(createLayout());
     }
@@ -155,7 +156,10 @@ public class MainActivity extends Activity {
 
         if (statusText != null && !running) {
             String rxSource = inputMode == INPUT_WIRED ? "3.5 мм" : "BT";
-            String txSource = outputMode == OUTPUT_WIRED ? "3.5 мм" : "BT";
+            String txSource;
+            if (outputMode == OUTPUT_WIRED) txSource = "3.5 мм";
+            else if (outputMode == OUTPUT_BLUETOOTH) txSource = "BT";
+            else txSource = "Динамик";
             statusText.setText("TX: " + txSource + "  |  RX: " + rxSource);
             statusText.setTextColor(COLOR_TEXT_SECONDARY);
         }
@@ -487,7 +491,10 @@ public class MainActivity extends Activity {
             AudioDeviceInfo outputDevice = findSelectedOutputDevice();
             if (outputDevice == null) {
                 releaseAudio();
-                String msg = outputMode == OUTPUT_WIRED ? "Выход 3.5 мм не найден" : "Bluetooth-выход не найден";
+                String msg;
+                if (outputMode == OUTPUT_WIRED) msg = "Выход 3.5 мм не найден";
+                else if (outputMode == OUTPUT_BLUETOOTH) msg = "Bluetooth-выход не найден";
+                else msg = "Динамик не найден";
                 statusText.setText(msg);
                 statusText.setTextColor(COLOR_RED);
                 return;
@@ -578,6 +585,9 @@ public class MainActivity extends Activity {
                 return device;
             }
             if (outputMode == OUTPUT_BLUETOOTH && (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET))) {
+                return device;
+            }
+            if (outputMode == OUTPUT_SPEAKER && type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
                 return device;
             }
         }
@@ -693,6 +703,16 @@ public class MainActivity extends Activity {
 
     private boolean isIronSector(float phaseDeg) {
         return ironFilterMode != 0 && phaseDeg >= -30f && phaseDeg <= 10f;
+    }
+
+    private void applyRotation(int rotation) {
+        switch (rotation) {
+            case 0: setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED); break;
+            case 1: setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT); break;
+            case 2: setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE); break;
+            case 3: setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT); break;
+            case 4: setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE); break;
+        }
     }
 
     private void playLoop() {
