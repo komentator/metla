@@ -21,6 +21,7 @@ import android.os.Build;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -41,6 +42,8 @@ public class MainActivity extends Activity {
     private static final int INPUT_BLUETOOTH = 1;
     private static final int OUTPUT_WIRED = 0;
     private static final int OUTPUT_BLUETOOTH = 1;
+    private static final int OUTPUT_SPEAKER = 2;
+    private static final String PREF_SCREEN_ROTATION = "screen_rotation"; // 0=auto, 1=90, 2=180, 3=270
     private static final String PREFS = "detector_settings";
     private static final String PREF_INPUT_MODE = "input_mode";
     private static final String PREF_OUTPUT_MODE = "output_mode";
@@ -509,9 +512,12 @@ public class MainActivity extends Activity {
             statusText.setTextColor(COLOR_GREEN);
             startStopButton.setText("⏹");
             startStopButton.setBackground(fabDrawable(COLOR_RED));
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
             sessionLogger.start(this);
             currentTrack = new Track("Трек " + new java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(new java.util.Date()), System.currentTimeMillis());
+
+            runOnUiThread(() -> showBalanceDialog());
         } catch (Exception e) {
             running = false;
             releaseAudio();
@@ -520,6 +526,36 @@ public class MainActivity extends Activity {
             statusText.setText("Ошибка: " + e.getClass().getSimpleName() + msg);
             statusText.setTextColor(COLOR_RED);
         }
+    }
+
+    private void showBalanceDialog() {
+        if (!running) return;
+        android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(this);
+        builder.setTitle("Баланс грунта");
+        builder.setMessage("Нажмите 'Баланс' для калибровки нуля. Убедитесь, что катушка над чистым грунтом без металлов.");
+        builder.setCancelable(false);
+        builder.setPositiveButton("Баланс", (dialog, which) -> {
+            float oldBaseI = baseI;
+            float oldBaseQ = baseQ;
+            baseI = lpfI;
+            baseQ = lpfQ;
+            // Проверка: если значения слишком малы — возможно нет сигнала
+            if (Math.abs(lpfI) < 0.001f && Math.abs(lpfQ) < 0.001f) {
+                baseI = oldBaseI;
+                baseQ = oldBaseQ;
+                new android.app.AlertDialog.Builder(MainActivity.this)
+                    .setTitle("Ошибка баланса")
+                    .setMessage("Сигнал слишком слабый.\n\nПроверьте:\n• Подключение катушек\n• Уровень TX (в настройках)\n• Контакт разъёмов")
+                    .setPositiveButton("OK", null)
+                    .show();
+            } else {
+                statusText.setText("Баланс выполнен");
+                statusText.setTextColor(COLOR_GREEN);
+                dialog.dismiss();
+            }
+        });
+        builder.setNegativeButton("Пропустить", (dialog, which) -> dialog.dismiss());
+        builder.show();
     }
 
     private AudioDeviceInfo findSelectedInputDevice() {
@@ -565,6 +601,7 @@ public class MainActivity extends Activity {
                 startStopButton.setBackground(fabDrawable(COLOR_ACCENT));
             });
         }
+        runOnUiThread(() -> getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON));
     }
 
     private void releaseAudio() {
