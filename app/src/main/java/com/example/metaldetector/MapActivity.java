@@ -18,6 +18,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.graphics.drawable.GradientDrawable;
 
@@ -148,11 +149,32 @@ public class MapActivity extends Activity {
 
         root.addView(topBar, new LinearLayout.LayoutParams(-1, -2));
 
-        // Map view (Yandex MapKit)
+        // Map view container with zoom controls overlay
+        FrameLayout mapContainer = new FrameLayout(this);
         mapView = new MapView(this);
         mapView.setFocusable(true);
         mapView.setClickable(true);
-        root.addView(mapView, new LinearLayout.LayoutParams(-1, 0, 1f));
+        mapContainer.addView(mapView, new FrameLayout.LayoutParams(-1, -1));
+
+        // Zoom controls (+ / -) on right side
+        LinearLayout zoomControls = new LinearLayout(this);
+        zoomControls.setOrientation(LinearLayout.VERTICAL);
+        zoomControls.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button zoomInBtn = zoomBtn("+");
+        zoomInBtn.setOnClickListener(v -> zoomIn());
+        zoomControls.addView(zoomInBtn, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
+        Button zoomOutBtn = zoomBtn("−");
+        zoomOutBtn.setOnClickListener(v -> zoomOut());
+        zoomControls.addView(zoomOutBtn, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
+        FrameLayout.LayoutParams zoomParams = new FrameLayout.LayoutParams(-2, -2);
+        zoomParams.gravity = Gravity.RIGHT | Gravity.CENTER_VERTICAL;
+        zoomParams.setMargins(0, 0, dp(12), 0);
+        mapContainer.addView(zoomControls, zoomParams);
+
+        root.addView(mapContainer, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         // Bottom controls — 2 rows
         LinearLayout bottomPanel = new LinearLayout(this);
@@ -165,7 +187,12 @@ public class MapActivity extends Activity {
         row1.setOrientation(LinearLayout.HORIZONTAL);
         row1.setGravity(Gravity.CENTER);
 
-        recordButton = new Button(this);
+        Button locButton = new Button(this);
+        locButton.setText("📍 Я");
+        locButton.setAllCaps(false);
+        locButton.setTextSize(11);
+        locButton.setOnClickListener(v -> centerOnMyLocation());
+        row1.addView(locButton, new LinearLayout.LayoutParams(0, dp(42), 1f));
         recordButton.setText("▶ Запись");
         recordButton.setAllCaps(false);
         recordButton.setTextColor(COLOR_TEXT_PRIMARY);
@@ -388,6 +415,38 @@ public class MapActivity extends Activity {
         isSatellite = !isSatellite;
         mapView.getMap().setMapType(isSatellite ? MapType.SATELLITE : MapType.MAP);
         btn.setText(isSatellite ? "🗺 Схема" : "🛰 Спутник");
+    }
+
+    private Button zoomBtn(String text) {
+        Button btn = new Button(this);
+        btn.setText(text);
+        btn.setTextSize(18);
+        btn.setTextColor(COLOR_TEXT_PRIMARY);
+        btn.setAllCaps(false);
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(COLOR_CARD);
+        gd.setCornerRadius(dp(12));
+        btn.setBackground(gd);
+        btn.setPadding(0, 0, 0, 0);
+        return btn;
+    }
+
+    private void zoomIn() {
+        CameraPosition pos = mapView.getMap().getCameraPosition();
+        mapView.getMap().move(new CameraPosition(pos.getTarget(), pos.getZoom() + 1, 0, 0));
+    }
+
+    private void zoomOut() {
+        CameraPosition pos = mapView.getMap().getCameraPosition();
+        mapView.getMap().move(new CameraPosition(pos.getTarget(), pos.getZoom() - 1, 0, 0));
+    }
+
+    private void centerOnMyLocation() {
+        if (lastKnownLocation != null) {
+            mapView.getMap().move(new CameraPosition(lastKnownLocation, 16, 0, 0));
+        } else {
+            statusText.setText("GPS позиция неизвестна");
+        }
     }
 
     private void showMyPlaces() {
