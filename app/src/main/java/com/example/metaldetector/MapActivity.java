@@ -93,6 +93,10 @@ public class MapActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Ленивая инициализация MapKit
+        DetectorApp.initMapKit(this);
+        
         notesDb = new NotesDatabase(this);
         findDb = new FindDatabase(this);
         savedPosition = new SavedMapPosition(this);
