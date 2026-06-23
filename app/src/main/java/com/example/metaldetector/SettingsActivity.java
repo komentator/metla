@@ -133,19 +133,19 @@ public class SettingsActivity extends Activity {
         // Card: Operation Mode & Scan Settings
         LinearLayout modeCard = card();
         modeCard.addView(sectionLabel("Режим работы"), matchWrap());
-        Spinner modeSpinner = styledSpinner(new String[]{"Поиск", "Сканирование"});
+        modeSpinner = styledSpinner(new String[]{"Поиск", "Сканирование"});
         modeCard.addView(modeSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
 
         modeCard.addView(sectionLabel("Скан: начальная частота (кГц)"), matchWrap());
-        TextView scanStartText = valueText("8 кГц");
+        scanStartText = valueText("8 кГц");
         modeCard.addView(scanStartText, matchWrap());
-        SeekBar scanStartSeek = styledSeekBar(48); // 1-48 kHz
+        scanStartSeek = styledSeekBar(48); // 1-48 kHz
         modeCard.addView(scanStartSeek, withMargins(new LinearLayout.LayoutParams(-1, dp(36)), 0, dp(8), 0, dp(12)));
 
         modeCard.addView(sectionLabel("Скан: конечная частота (кГц)"), matchWrap());
-        TextView scanEndText = valueText("20 кГц");
+        scanEndText = valueText("20 кГц");
         modeCard.addView(scanEndText, matchWrap());
-        SeekBar scanEndSeek = styledSeekBar(48); // 1-48 kHz
+        scanEndSeek = styledSeekBar(48); // 1-48 kHz
         modeCard.addView(scanEndSeek, withMargins(new LinearLayout.LayoutParams(-1, dp(36)), 0, dp(8), 0, 0));
         root.addView(modeCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
