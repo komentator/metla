@@ -523,8 +523,6 @@ public class MainActivity extends Activity {
             int playBufferBytes = alignBytes(Math.max(playMin, SAMPLE_RATE / 4), 4);
 
             audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE, channelConfig, AudioFormat.ENCODING_PCM_16BIT, recordBufferBytes);
-            audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT, playBufferBytes, AudioTrack.MODE_STREAM);
-
             if (!audioRecord.setPreferredDevice(inputDevice)) {
                 releaseAudio();
                 statusText.setText("Не удалось выбрать вход");
@@ -543,7 +541,34 @@ public class MainActivity extends Activity {
                 statusText.setTextColor(COLOR_RED);
                 return;
             }
-            audioTrack.setPreferredDevice(outputDevice);
+
+            // Use AudioTrack.Builder for API 26+ to explicitly set output device
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                android.media.AudioAttributes audioAttributes = new android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build();
+                audioTrack = new AudioTrack.Builder()
+                        .setAudioAttributes(audioAttributes)
+                        .setAudioFormat(new AudioFormat.Builder()
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(SAMPLE_RATE)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                                .build())
+                        .setBufferSizeInBytes(playBufferBytes)
+                        .setTransferMode(AudioTrack.MODE_STREAM)
+                        .setSessionId(AudioManager.AUDIO_SESSION_ID_GENERATE)
+                        .build();
+            } else {
+                audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT, playBufferBytes, AudioTrack.MODE_STREAM);
+            }
+
+            if (!audioTrack.setPreferredDevice(outputDevice)) {
+                releaseAudio();
+                statusText.setText("Не удалось выбрать выход");
+                statusText.setTextColor(COLOR_RED);
+                return;
+            }
 
             if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED || audioTrack.getState() != AudioTrack.STATE_INITIALIZED) {
                 releaseAudio();

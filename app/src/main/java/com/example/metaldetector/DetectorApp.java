@@ -1,6 +1,7 @@
 package com.example.metaldetector;
 
 import android.app.Application;
+import android.content.Context;
 import com.yandex.mapkit.MapKitFactory;
 
 public class DetectorApp extends Application {

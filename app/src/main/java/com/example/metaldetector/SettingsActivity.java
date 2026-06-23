@@ -30,6 +30,9 @@ public class SettingsActivity extends Activity {
     private static final String PREF_RX_CHANNEL = "rx_channel";
     private static final String PREF_OUTPUT_MODE = "output_mode";
     private static final String PREF_SCREEN_ROTATION = "screen_rotation"; // 0=auto, 1=portrait, 2=landscape, 3=reverse_portrait, 4=reverse_landscape
+    private static final String PREF_OPERATION_MODE = "operation_mode";
+    private static final String PREF_SCAN_START_FREQ = "scan_start_freq";
+    private static final String PREF_SCAN_END_FREQ = "scan_end_freq";
     private static final int ROTATION_AUTO = 0;
     private static final int ROTATION_PORTRAIT = 1;
     private static final int ROTATION_LANDSCAPE = 2;
@@ -57,11 +60,16 @@ public class SettingsActivity extends Activity {
     private Spinner rxChannelSpinner;
     private Spinner outputSpinner;
     private Spinner rotationSpinner;
+    private Spinner modeSpinner;
     private SeekBar freqSeek;
     private SeekBar txSeek;
+    private SeekBar scanStartSeek;
+    private SeekBar scanEndSeek;
     private Button balanceButton;
     private Button ironButton;
     private Button audioScaleButton;
+    private TextView scanStartText;
+    private TextView scanEndText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -122,11 +130,30 @@ public class SettingsActivity extends Activity {
         ioCard.addView(rotationSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, 0));
         root.addView(ioCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
-        // Card: TX Frequency
+        // Card: Operation Mode & Scan Settings
+        LinearLayout modeCard = card();
+        modeCard.addView(sectionLabel("Режим работы"), matchWrap());
+        Spinner modeSpinner = styledSpinner(new String[]{"Поиск", "Сканирование"});
+        modeCard.addView(modeSpinner, withMargins(new LinearLayout.LayoutParams(-1, dp(48)), 0, dp(8), 0, dp(12)));
+
+        modeCard.addView(sectionLabel("Скан: начальная частота (кГц)"), matchWrap());
+        TextView scanStartText = valueText("8 кГц");
+        modeCard.addView(scanStartText, matchWrap());
+        SeekBar scanStartSeek = styledSeekBar(48); // 1-48 kHz
+        modeCard.addView(scanStartSeek, withMargins(new LinearLayout.LayoutParams(-1, dp(36)), 0, dp(8), 0, dp(12)));
+
+        modeCard.addView(sectionLabel("Скан: конечная частота (кГц)"), matchWrap());
+        TextView scanEndText = valueText("20 кГц");
+        modeCard.addView(scanEndText, matchWrap());
+        SeekBar scanEndSeek = styledSeekBar(48); // 1-48 kHz
+        modeCard.addView(scanEndSeek, withMargins(new LinearLayout.LayoutParams(-1, dp(36)), 0, dp(8), 0, 0));
+        root.addView(modeCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
+
+        // Card: TX Frequency (increased range up to 48 kHz)
         LinearLayout freqCard = card();
         freqText = valueText("TX частота: 8000 Гц");
         freqCard.addView(freqText, matchWrap());
-        freqSeek = styledSeekBar(15);
+        freqSeek = styledSeekBar(48); // 1-48 kHz
         freqCard.addView(freqSeek, withMargins(new LinearLayout.LayoutParams(-1, dp(36)), 0, dp(8), 0, 0));
         root.addView(freqCard, withMargins(matchWrap(), 0, dp(12), 0, dp(12)));
 
@@ -309,6 +336,44 @@ public class SettingsActivity extends Activity {
                 applyRotation(position);
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        // Operation mode
+        int opMode = prefs.getInt(PREF_OPERATION_MODE, 0);
+        modeSpinner.setSelection(opMode);
+        modeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                prefs.edit().putInt(PREF_OPERATION_MODE, position).apply();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        // Scan start frequency
+        int scanStart = prefs.getInt(PREF_SCAN_START_FREQ, 8);
+        scanStartSeek.setProgress(scanStart - 1);
+        scanStartText.setText(String.format(Locale.US, "%d кГц", scanStart));
+        scanStartSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int f = progress + 1;
+                scanStartText.setText(String.format(Locale.US, "%d кГц", f));
+                prefs.edit().putInt(PREF_SCAN_START_FREQ, f).apply();
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        // Scan end frequency
+        int scanEnd = prefs.getInt(PREF_SCAN_END_FREQ, 20);
+        scanEndSeek.setProgress(scanEnd - 1);
+        scanEndText.setText(String.format(Locale.US, "%d кГц", scanEnd));
+        scanEndSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int f = progress + 1;
+                scanEndText.setText(String.format(Locale.US, "%d кГц", f));
+                prefs.edit().putInt(PREF_SCAN_END_FREQ, f).apply();
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
         int freq = prefs.getInt(PREF_TX_FREQUENCY, 8);
